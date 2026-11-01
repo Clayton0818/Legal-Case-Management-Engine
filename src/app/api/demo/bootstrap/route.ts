@@ -1,5 +1,6 @@
 // POST /api/demo/bootstrap — create the FIRST demo firm on a fresh
 // deployment, over HTTPS, with no database terminal access needed (c106).
+// The "Create the demo firm" form on /demo calls this.
 //
 // This is deliberately NOT the same shape as /api/demo/reset: reset requires
 // a signed-in session whose own firm already carries the demo flag, which is
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
   try {
     const { demoResetEnabled, createDemoTenant, findActiveDemoTenants } = await import("@/engines/demo/reset");
     const { loadDemoStatus } = await import("@/engines/demo/status");
+    const { NO_TENANT_SCOPE, refreshDemoTarget } = await import("@/engines/demo/follow");
     const { withTenant } = await import("@/tenancy/withTenant");
 
     if (!demoResetEnabled()) {
@@ -66,14 +68,14 @@ export async function POST(req: Request) {
     const run: TenantRunner = (tenantId, fn) => withTenant(tenantId, fn);
     // Not a real firm — just a scope to run the (non-tenant-scoped) firms
     // lookup through, exactly like the CLI's own NO_TENANT (cli.ts).
-    const noTenantScope = "00000000-0000-4000-8000-000000000000";
-    const existing = await findActiveDemoTenants(run, noTenantScope);
+    const existing = await findActiveDemoTenants(run, NO_TENANT_SCOPE);
     if (existing.length > 0) {
-      throw new HttpError(409, `A demo firm already exists (${existing[0]!.tenantId}); use POST /api/demo/reset from a signed-in session instead.`);
+      throw new HttpError(409, `A demo firm already exists (${existing[0]!.tenantId}); use the Reset demo firm button on /demo instead.`);
     }
 
     const created = await createDemoTenant(run, { createdBy: "deployment bootstrap via /api/demo/bootstrap" });
     const status = await loadDemoStatus(run, created.tenantId);
+    const following = await refreshDemoTarget(run);
 
     return Response.json(
       {
@@ -83,11 +85,12 @@ export async function POST(req: Request) {
         presenterUserId: status.current?.presenterUserId ?? null,
         presenterName: status.current?.presenterName ?? null,
         adminUserId: status.current?.adminUserId ?? null,
-        next:
-          "Set these on this deployment, then reload /demo with no session at all: " +
-          `DEV_TENANT_ID=${created.tenantId}` +
-          (status.current?.presenterUserId ? `, DEV_USER_ID=${status.current.presenterUserId}` : "") +
-          ", AUTH_PROVIDER=dev. After that, the Reset demo firm button on /demo keeps it fresh without ever needing this route again.",
+        next: following
+          ? "This deployment follows the newest demo firm (DEV_TENANT_ID=current-demo): reload /demo and present. From now on the Reset demo firm button keeps it fresh, and you can remove DEMO_BOOTSTRAP_SECRET."
+          : "Now set DEV_TENANT_ID=current-demo on this deployment (recommended: it follows every reset by itself; add DEV_DEMO_USER=partner for lawyer-only actions), " +
+            `or the fixed ids DEV_TENANT_ID=${created.tenantId}` +
+            (status.current?.presenterUserId ? ` and DEV_USER_ID=${status.current.presenterUserId}` : "") +
+            ". Then reload /demo. After that the Reset demo firm button keeps it fresh, and you can remove DEMO_BOOTSTRAP_SECRET.",
       },
       { status: 201 }
     );
