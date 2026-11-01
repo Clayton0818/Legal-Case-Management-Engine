@@ -1,4 +1,4 @@
-// Tables owned by the Intake engine (c14, c48, c65–c70, c73).
+// Tables owned by the Intake engine (c14, c48, c65–c71, c73).
 //
 // Shared tables live in ./foundation.ts and ../schema.ts (imported, never
 // redefined or edited). Conventions (identical to ./foundation.ts): NOT NULL
@@ -524,6 +524,97 @@ export const intakeFollowUpRuns = pgTable("intake_follow_up_runs", {
 ]);
 
 // ---------------------------------------------------------------------------
+// c71 — spot repeat contacts and verify identity before sharing anything
+// ---------------------------------------------------------------------------
+
+/**
+ * A staff-reviewable suggestion that a newly-arriving contact (an
+ * intake_sessions row) is the SAME real person as an existing `parties` row.
+ * Never acted on automatically: confirming one only moves the owning
+ * session's intake_session_state.partyId pointer (see
+ * src/engines/intake/identity/service.ts#confirmMatch) — the `parties` rows
+ * themselves are never merged or edited by this table. Scoring is done in
+ * application code (src/engines/intake/identity/matching.ts); this table only
+ * records the outcome of a scoring run for staff triage.
+ */
+export const intakeContactMatchSuggestions = pgTable("intake_contact_match_suggestions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  intakeSessionId: uuid("intake_session_id").notNull().references(() => intakeSessions.id),
+  matchedPartyId: uuid("matched_party_id").notNull().references(() => parties.id),
+  /** 'exact' | 'likely' | 'possible'. */
+  confidence: text("confidence").notNull(),
+  /** Which fields lined up, e.g. ['email'], ['fullName','dateOfBirth']. */
+  matchedFields: text("matched_fields").array().notNull().default(sql`'{}'::text[]`),
+  /** 0..1, informational only — `confidence` is what callers act on. */
+  score: real("score").notNull(),
+  /** 'pending' | 'confirmed' | 'rejected'. */
+  status: text("status").notNull().default("pending"),
+  reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  rejectedReason: text("rejected_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // One suggestion per (session, candidate party) pair — a repeat scoring run leaves the existing decision alone.
+  uniqueIndex("intake_contact_match_suggestions_session_party_key").on(t.tenantId, t.intakeSessionId, t.matchedPartyId),
+  index("intake_contact_match_suggestions_pending_idx").on(t.tenantId, t.status, t.createdAt),
+  check("intake_contact_match_suggestions_confidence_check", sql`${t.confidence} in ('exact','likely','possible')`),
+  check("intake_contact_match_suggestions_score_check", sql`${t.score} between 0 and 1`),
+  check("intake_contact_match_suggestions_status_check", sql`${t.status} in ('pending','confirmed','rejected')`),
+  check(
+    "intake_contact_match_suggestions_rejected_reason_check",
+    sql`${t.status} <> 'rejected' or (${t.rejectedReason} is not null and length(${t.rejectedReason}) > 0)`
+  ),
+]);
+
+/**
+ * A single identity-verification attempt against a party already on file:
+ * either the caller logged into the client portal (method 'portal_login',
+ * recorded here for a complete audit trail even though login itself happens
+ * elsewhere) or a one-time code was sent to a contact value already on file
+ * for that party and the caller proved they received it (method
+ * 'one_time_code'). Never stores the code itself — only a salted hash, so a
+ * read of this table cannot be used to impersonate the party.
+ */
+export const intakeIdentityVerifications = pgTable("intake_identity_verifications", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  partyId: uuid("party_id").notNull().references(() => parties.id),
+  intakeSessionId: uuid("intake_session_id").references(() => intakeSessions.id),
+  /** 'phone' | 'sms' | 'email'. */
+  channel: text("channel").notNull(),
+  /** 'portal_login' | 'one_time_code'. */
+  method: text("method").notNull(),
+  /** The on-file value the code was sent to / the login was matched against (normalised). */
+  contactValueUsed: text("contact_value_used"),
+  /** sha256(code:salt) — the plaintext code is never persisted. */
+  codeHash: text("code_hash"),
+  codeSalt: text("code_salt"),
+  /** 'pending' | 'verified' | 'failed' | 'expired'. */
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(5),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  codeExpiresAt: timestamp("code_expires_at", { withTimezone: true }),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  /** Staff member who triggered this, when sent from the console rather than the automated channel. */
+  requestedByUserId: uuid("requested_by_user_id").references(() => users.id),
+}, (t) => [
+  index("intake_identity_verifications_party_idx").on(t.tenantId, t.partyId, t.requestedAt),
+  index("intake_identity_verifications_session_idx").on(t.tenantId, t.intakeSessionId),
+  check("intake_identity_verifications_channel_check", sql`${t.channel} in ('phone','sms','email')`),
+  check("intake_identity_verifications_method_check", sql`${t.method} in ('portal_login','one_time_code')`),
+  check("intake_identity_verifications_status_check", sql`${t.status} in ('pending','verified','failed','expired')`),
+  check(
+    "intake_identity_verifications_otp_shape_check",
+    sql`${t.method} <> 'one_time_code' or (
+      ${t.contactValueUsed} is not null and ${t.codeHash} is not null and
+      ${t.codeSalt} is not null and ${t.codeExpiresAt} is not null
+    )`
+  ),
+]);
+
+// ---------------------------------------------------------------------------
 // c73 — case acceptance rules
 // ---------------------------------------------------------------------------
 
@@ -591,7 +682,8 @@ export const intakeReferralDirectory = pgTable("intake_referral_directory", {
 //    intake_on_call_rota, intake_consultations, intake_calendar_connections,
 //    intake_busy_blocks, intake_open_gate_evidence, intake_matter_openings,
 //    intake_matter_handoffs, intake_follow_up_runs, intake_fit_rule_sets,
-//    intake_fit_evaluations, intake_referral_directory.
+//    intake_fit_evaluations, intake_referral_directory,
+//    intake_contact_match_suggestions, intake_identity_verifications.
 // 2. GRANT SELECT, INSERT, UPDATE, DELETE ON all of the above TO app_runtime,
 //    EXCEPT the history tables below.
 // 3. Append-only history (c6): these are written once and never changed:
@@ -601,4 +693,13 @@ export const intakeReferralDirectory = pgTable("intake_referral_directory", {
 //    (intake_consents keeps UPDATE because withdrawn_at is set later.)
 // 4. intake_matter_assignments: UPDATE is needed only to set ended_at;
 //    optionally GRANT UPDATE (ended_at) only.
+// 5. c71: intake_identity_verifications.code_hash/code_salt are secrets-at-
+//    rest in all but name — recommend the same column-level-encryption
+//    treatment already pending for intake_messages.body (c21 hardening) be
+//    applied here too, rather than treating this table as lower-risk because
+//    it stores a hash rather than plaintext. No new column is proposed on
+//    the shared `parties` table by this engine; a `normalizedPhone` column
+//    there (for a tighter SQL prefilter in findDuplicateCandidates — see
+//    src/engines/intake/identity/service.ts) is a foundation-owned follow-up,
+//    not something this PR requests directly.
 // ---------------------------------------------------------------------------
