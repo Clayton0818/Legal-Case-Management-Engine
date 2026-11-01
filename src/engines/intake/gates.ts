@@ -1,4 +1,4 @@
-// Approval gates owned by the Intake engine (c14, c48, c65–c70, c73).
+// Approval gates owned by the Intake engine (c14, c48, c65–c71, c73).
 //
 // Nothing here is approved. Every gate stays closed until a reviewer's
 // sign-off is recorded (`npm run compliance -- approve …`). Until then:
@@ -358,6 +358,29 @@ export const FOLLOW_UP_TEMPLATES = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// c71 — spot repeat contacts and verify identity before sharing anything
+// ---------------------------------------------------------------------------
+
+export const IDENTITY_COPY = {
+  /**
+   * One-time verification code, sent only to a contact method already on
+   * file for the party (src/engines/intake/identity/service.ts never sends
+   * this to whatever the caller is currently claiming — see
+   * resolveOnFileContactValue in ./identity/verification.ts). No Spanish
+   * twin yet: the code and firm name are the only variable content, so this
+   * is deliberately left as a single bilingual-agnostic gate rather than
+   * duplicated via bilingual() until a reviewer asks for separate wording.
+   */
+  oneTimeCode: defineGate({
+    key: "copy.intake.identity_one_time_code",
+    cardIds: ["c71"],
+    reviewers: ["attorney"],
+    description: "One-time verification code sent to a contact method already on file, before matter information is shared",
+    draft: "{firmName}: your verification code is {code}. It expires in 10 minutes. If you did not request this, ignore this message.",
+  }),
+} as const;
+
+// ---------------------------------------------------------------------------
 // c73 — case acceptance
 // ---------------------------------------------------------------------------
 
@@ -430,6 +453,7 @@ export const INTAKE_GATE_KEYS: readonly string[] = [
   ...Object.values(SPEED_TO_LEAD_COPY).flatMap((g) => [g.en.key, g.es.key]),
   ...Object.values(FOLLOW_UP_GATES).map((g) => g.key),
   ...Object.values(FOLLOW_UP_TEMPLATES).map((g) => g.key),
+  ...Object.values(IDENTITY_COPY).map((g) => g.key),
   ...Object.values(ACCEPTANCE_GATES).map((g) => g.key),
   ...Object.values(CLIENT_STATUS_GATES).map((g) => g.key),
 ];
