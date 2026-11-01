@@ -38,6 +38,7 @@ import {
   type EnvelopeStatus,
   type NewSignerSpec,
   type SignerStatus,
+  type SignerSummary,
 } from "./envelope";
 
 /** Business rule 1 (spec §5): only an approved document version may be put in an envelope. */
@@ -82,6 +83,15 @@ async function loadSigners(tx: TenantTx, tenantId: string, envelopeId: string) {
     .from(signatureSigners)
     .where(and(eq(signatureSigners.tenantId, tenantId), eq(signatureSigners.envelopeId, envelopeId)))
     .orderBy(signatureSigners.orderNo);
+}
+
+/**
+ * The DB column is plain text (with a CHECK constraint), so drizzle types
+ * `status` as `string`. Narrow each row to the pure SignerSummary shape the
+ * envelope.ts decision functions take.
+ */
+function toSignerSummaries(rows: readonly { orderNo: number; status: string }[]): SignerSummary[] {
+  return rows.map((r) => ({ orderNo: r.orderNo, status: r.status as SignerStatus }));
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +304,14 @@ export async function recordSignerEvent(tx: TenantTx, tenantId: string, input: R
   if (!target) throw new NotFoundError("Signer");
   const now = input.now ?? new Date();
 
-  const decision = decideSignerAction({ envelopeStatus: envelope.status as EnvelopeStatus, signer: target, signers });
+  const summaries = toSignerSummaries(signers);
+  const targetSummary: SignerSummary = { orderNo: target.orderNo, status: target.status as SignerStatus };
+
+  const decision = decideSignerAction({
+    envelopeStatus: envelope.status as EnvelopeStatus,
+    signer: targetSummary,
+    signers: summaries,
+  });
   if (!decision.allowed) throw new DocumentError(decision.reason, 409);
 
   if (input.event === "viewed") {
@@ -343,7 +360,9 @@ export async function recordSignerEvent(tx: TenantTx, tenantId: string, input: R
   }
   await tx.update(signatureSigners).set({ status: "signed", signedAt: now }).where(eq(signatureSigners.id, target.id));
 
-  const updatedSigners = signers.map((s) => (s.orderNo === input.orderNo ? { ...s, status: "signed" as SignerStatus } : s));
+  const updatedSigners: SignerSummary[] = summaries.map((s) =>
+    s.orderNo === input.orderNo ? { orderNo: s.orderNo, status: "signed" } : s
+  );
   const next = nextSignerToAct(updatedSigners);
   if (next && next.orderNo !== input.orderNo) {
     await tx
