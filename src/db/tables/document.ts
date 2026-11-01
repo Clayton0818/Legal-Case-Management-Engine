@@ -1,4 +1,4 @@
-// Tables owned by the Document engine (c39–c41, c49, c84–c90, c4).
+// Tables owned by the Document engine (c39–c41, c49, c84–c90).
 //
 // c84 — the per-matter document store. Builds ON the shared `documents` table
 // (schema.ts): one `documents` row is one immutable VERSION of a file
@@ -16,8 +16,9 @@
 //   document_retention_rules   firm-entered retention periods (gated config; applied only via rules.retention_periods)
 //   document_checklist_templates  firm-set required-documents checklist per practice area (c49)
 //   document_checklist_items      one matter's required-documents checklist (c49)
-//   signature_envelopes        c4 — one e-signature request: signers, signing order, expiry, the document version it is locked to
-//   signature_signers          c4 — one signer on one envelope, in order
+//   document_templates            firm template library: letters, pleadings, forms, agreements (c85)
+//   document_template_versions    versioned template bodies; only 'approved' ones generate (c85)
+//   generated_document_sources    which template version + field values produced a document version (c85)
 //
 // Conventions (./foundation.ts): NOT NULL tenantId -> firms.id on every
 // table, text + CHECK for statuses, timestamptz, indexes leading with
@@ -499,98 +500,97 @@ export const documentChecklistItems = pgTable("document_checklist_items", {
 ]);
 
 // ---------------------------------------------------------------------------
-// E-signature envelopes (c4 — the build; c39/c41/c59/c52 reuse it)
+// Templates that fill themselves from matter data (c85)
 // ---------------------------------------------------------------------------
 
 /**
- * One e-signature request against ONE document version. `documentSha256` is
- * copied from `documents.sha256` at creation and never changes: if the
- * document gets a new version the envelope cannot complete against it (spec
- * §5 rule 1, acceptance criterion 3 — the caller must void and send a new
- * envelope). `documentId` points at that exact `documents` row (one version),
- * not at the logical `document_groups` row.
- *
- * No vendor is wired yet (src/engines/document/gates.ts:
- * VENDOR_GATES.esignature) — `vendor`/`vendorEnvelopeId` stay null until one
- * is. Sending always goes through the gate in signature/service.ts, which
- * fails closed with a pending placeholder exactly like c39's own
- * SignatureRequestAdapter seam.
+ * The firm's template library (c85). Metadata only; the body lives on each
+ * version. Retiring stops new use; documents already generated keep their
+ * link to the version they came from.
  */
-export const signatureEnvelopes = pgTable("signature_envelopes", {
+export const documentTemplates = pgTable("document_templates", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid("tenant_id").notNull().references(() => firms.id),
-  matterId: uuid("matter_id").notNull().references(() => matters.id),
-  documentId: uuid("document_id").notNull().references(() => documents.id),
-  documentSha256: text("document_sha256").notNull(),
-  /** 'engagement' | 'waiver' | 'pre_filing' | 'fee_change' | 'other'. */
-  purpose: text("purpose").notNull(),
-  /** 'draft' | 'sent' | 'completed' | 'declined' | 'expired' | 'voided'. */
-  status: text("status").notNull().default("draft"),
-  /** Adapter name once a real vendor is wired (c4 open question 1); null = no vendor configured. */
-  vendor: text("vendor"),
-  vendorEnvelopeId: text("vendor_envelope_id"),
+  name: text("name").notNull(),
+  /** 'letter' | 'pleading' | 'form' | 'agreement'. */
+  category: text("category").notNull(),
+  /** PracticeAreaId or null for every practice area. */
+  practiceArea: text("practice_area"),
+  /** Matter type (e.g. 'uncontested_divorce') or null for every type. */
+  matterType: text("matter_type"),
+  /** 'en' | 'es' | … (c36). */
+  language: text("language").notNull().default("en"),
+  /** 'active' | 'retired'. */
+  status: text("status").notNull().default("active"),
+  /** True for a product-shipped starter template (c85 rule 9: arrives as draft, firm lawyer approves). */
+  isStarter: boolean("is_starter").notNull().default(false),
   createdByUserId: uuid("created_by_user_id").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  sentAt: timestamp("sent_at", { withTimezone: true }),
-  /** Firm-set expiry (default 10 business days after sentAt — spec §5 rule 6). */
-  expiresAt: timestamp("expires_at", { withTimezone: true }),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  declinedAt: timestamp("declined_at", { withTimezone: true }),
-  expiredAt: timestamp("expired_at", { withTimezone: true }),
-  voidedAt: timestamp("voided_at", { withTimezone: true }),
-  voidReason: text("void_reason"),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+  retiredByUserId: uuid("retired_by_user_id").references(() => users.id),
 }, (t) => [
-  index("signature_envelopes_tenant_matter_idx").on(t.tenantId, t.matterId, t.status),
-  index("signature_envelopes_tenant_document_idx").on(t.tenantId, t.documentId),
-  index("signature_envelopes_expiry_idx").on(t.status, t.expiresAt),
-  check(
-    "signature_envelopes_purpose_check",
-    sql`${t.purpose} in ('engagement','waiver','pre_filing','fee_change','other')`
-  ),
-  check(
-    "signature_envelopes_status_check",
-    sql`${t.status} in ('draft','sent','completed','declined','expired','voided')`
-  ),
-  check("signature_envelopes_void_reason_check", sql`${t.status} <> 'voided' or ${t.voidReason} is not null`),
+  index("document_templates_tenant_area_idx").on(t.tenantId, t.practiceArea, t.status),
+  check("document_templates_category_check", sql`${t.category} in ('letter','pleading','form','agreement')`),
+  check("document_templates_status_check", sql`${t.status} in ('active','retired')`),
 ]);
 
 /**
- * One signer on one envelope, in signing order (`orderNo`, 0-based). Exactly
- * one of `partyId` / `userId` is set: a client or other outside party signs
- * as a `parties` row, a firm user (the countersigning attorney) as a `users`
- * row (spec §6).
+ * One version of a template body (c85). Bodies use the restricted syntax in
+ * src/engines/document/templates/syntax.ts and are validated against the
+ * field catalogue before insert. A version's body is never edited: editing an
+ * approved template creates a new draft version.
  */
-export const signatureSigners = pgTable("signature_signers", {
+export const documentTemplateVersions = pgTable("document_template_versions", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid("tenant_id").notNull().references(() => firms.id),
-  envelopeId: uuid("envelope_id").notNull().references(() => signatureEnvelopes.id),
-  orderNo: integer("order_no").notNull(),
-  /** 'client' | 'firm_user' | 'other'. */
-  signerType: text("signer_type").notNull(),
-  partyId: uuid("party_id").references(() => parties.id),
-  userId: uuid("user_id").references(() => users.id),
-  /** 'portal_login' | 'one_time_code' | 'email_link_only' (spec §5 rule 8; firm setting). */
-  identityMethod: text("identity_method").notNull().default("portal_login"),
-  /** 'pending' | 'sent' | 'viewed' | 'signed' | 'declined'. Starts 'pending' until it is this signer's turn. */
-  status: text("status").notNull().default("pending"),
-  sentAt: timestamp("sent_at", { withTimezone: true }),
-  viewedAt: timestamp("viewed_at", { withTimezone: true }),
-  signedAt: timestamp("signed_at", { withTimezone: true }),
-  declinedAt: timestamp("declined_at", { withTimezone: true }),
-  declineReason: text("decline_reason"),
+  templateId: uuid("template_id").notNull().references(() => documentTemplates.id),
+  versionNo: integer("version_no").notNull(),
+  body: text("body").notNull(),
+  sha256: text("sha256").notNull(),
+  /** Catalogue keys the body uses (from parseTemplate), for the editor and impact checks. */
+  fieldKeys: jsonb("field_keys").$type<string[]>().notNull().default([]),
+  /** 'draft' | 'approved' | 'superseded'. At most one 'approved' per template. */
+  status: text("status").notNull().default("draft"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
 }, (t) => [
-  uniqueIndex("signature_signers_envelope_order_key").on(t.envelopeId, t.orderNo),
-  index("signature_signers_tenant_envelope_idx").on(t.tenantId, t.envelopeId),
-  check("signature_signers_order_check", sql`${t.orderNo} >= 0`),
-  check("signature_signers_signer_type_check", sql`${t.signerType} in ('client','firm_user','other')`),
+  uniqueIndex("document_template_versions_no_key").on(t.tenantId, t.templateId, t.versionNo),
+  uniqueIndex("document_template_versions_one_approved_key")
+    .on(t.tenantId, t.templateId)
+    .where(sql`${t.status} = 'approved'`),
+  check("document_template_versions_status_check", sql`${t.status} in ('draft','approved','superseded')`),
+  check("document_template_versions_version_check", sql`${t.versionNo} >= 1`),
   check(
-    "signature_signers_identity_method_check",
-    sql`${t.identityMethod} in ('portal_login','one_time_code','email_link_only')`
+    "document_template_versions_approved_by_check",
+    sql`${t.status} = 'draft' or (${t.approvedByUserId} is not null and ${t.approvedAt} is not null)`
   ),
-  check("signature_signers_status_check", sql`${t.status} in ('pending','sent','viewed','signed','declined')`),
-  check("signature_signers_party_or_user_check", sql`(${t.partyId} is not null) <> (${t.userId} is not null)`),
-  check("signature_signers_decline_reason_check", sql`${t.status} <> 'declined' or ${t.declineReason} is not null`),
+]);
+
+/**
+ * Provenance of a generated draft (c85 rule 7): the template version and a
+ * snapshot of the field values used, plus the placeholders left open and any
+ * lawyer clearances. Contains client data, so it follows the matter's
+ * retention (c2, c90).
+ */
+export const generatedDocumentSources = pgTable("generated_document_sources", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  documentId: uuid("document_id").notNull().references(() => documents.id),
+  matterId: uuid("matter_id").notNull().references(() => matters.id),
+  templateVersionId: uuid("template_version_id").notNull().references(() => documentTemplateVersions.id),
+  fieldValues: jsonb("field_values").$type<Record<string, unknown>>().notNull().default({}),
+  /** Placeholder[] from renderTemplate(). */
+  placeholders: jsonb("placeholders").$type<{ key: string; label: string; reason: string }[]>().notNull().default([]),
+  /** PlaceholderClearance[] — each with the clearing lawyer and reason (also audited). */
+  clearances: jsonb("clearances").$type<{ key: string; reason: string; clearedByUserId: string }[]>().notNull().default([]),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("generated_document_sources_document_key").on(t.tenantId, t.documentId),
+  index("generated_document_sources_tenant_template_idx").on(t.tenantId, t.templateVersionId),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -601,7 +601,8 @@ export const signatureSigners = pgTable("signature_signers", {
 //    document_folder_templates, document_folders, document_groups,
 //    document_version_files, document_text, document_access_log,
 //    document_access_blocks, document_retention_rules,
-//    document_checklist_templates, document_checklist_items.
+//    document_checklist_templates, document_checklist_items,
+//    document_templates, document_template_versions, generated_document_sources.
 //
 // 2. Staging grants app_runtime SELECT/INSERT/UPDATE/DELETE on new tables by
 //    default. Restrict as follows:
@@ -664,12 +665,19 @@ export const signatureSigners = pgTable("signature_signers", {
 //    UPDATE on this table; only DELETE is revoked (items are archived, not
 //    deleted — see the table's own comment).
 //
-// 9. signature_envelopes / signature_signers (c4): RLS + tenant_isolation
-//    like every other table in this file. app_runtime keeps ordinary
-//    UPDATE (status moves draft → sent → completed/declined/expired/voided
-//    in place; a signer's status moves pending → sent → viewed → signed, or
-//    → declined); REVOKE DELETE on both (an envelope is voided, never
-//    deleted, so the signing history survives — spec §5 rule 2). No FK from
-//    signature_envelopes.documentId to a specific version needs an ON
-//    DELETE rule since `documents` rows are never deleted (note 3 above).
+// 9. c85 templates. Same never-delete rule as the rest of this file:
+//      REVOKE DELETE ON document_templates, document_template_versions,
+//        generated_document_sources FROM app_runtime;
+//    A version's body is immutable once written; app_runtime may only move
+//    its status:
+//      REVOKE UPDATE ON document_template_versions FROM app_runtime;
+//      GRANT UPDATE (status, approved_by_user_id, approved_at, superseded_at)
+//        ON document_template_versions TO app_runtime;
+//    generated_document_sources: only clearances change after insert:
+//      REVOKE UPDATE ON generated_document_sources FROM app_runtime;
+//      GRANT UPDATE (clearances) ON generated_document_sources TO app_runtime;
+//    The partial unique index document_template_versions_one_approved_key
+//    must be emitted with its WHERE clause; approving a new version must
+//    supersede the old one in the same transaction, before the insert/update
+//    that sets the new one to 'approved'.
 // ---------------------------------------------------------------------------
