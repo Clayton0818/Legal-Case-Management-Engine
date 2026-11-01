@@ -10,11 +10,17 @@ import {
   type NewContact,
 } from "./matching";
 
+/**
+ * Build a candidate party. `normalizedName` is derived from whatever
+ * `fullName` ends up being, the same way the parties table keeps the two in
+ * step, so overriding only `fullName` still gives a consistent record.
+ */
 function candidate(overrides: Partial<CandidateParty> = {}): CandidateParty {
+  const fullName = overrides.fullName ?? "Jane A. Doe";
   return {
     partyId: "party-1",
-    fullName: "Jane A. Doe",
-    normalizedName: normalizeName("Jane A. Doe"),
+    fullName,
+    normalizedName: normalizeName(fullName),
     email: "jane@example.com",
     phone: "(512) 555-0100",
     dateOfBirth: "1990-05-01",
@@ -65,7 +71,7 @@ describe("scoreCandidate", () => {
   it("is 'likely' when the name and date of birth both match but no contact detail does", () => {
     const result = scoreCandidate(
       { fullName: "Jane Doe", dateOfBirth: "1990-05-01" },
-      candidate({ email: "different@example.com", phone: "555-0199" })
+      candidate({ fullName: "Jane Doe", email: "different@example.com", phone: "555-0199" })
     );
     expect(result.confidence).toBe("likely");
     expect(result.matchedFields).toEqual(expect.arrayContaining(["fullName", "dateOfBirth"]));
@@ -74,9 +80,17 @@ describe("scoreCandidate", () => {
   it("is 'possible' on a name match alone", () => {
     const result = scoreCandidate(
       { fullName: "Jane Doe" },
-      candidate({ email: "different@example.com", phone: "555-0199", dateOfBirth: "1975-01-01" })
+      candidate({ fullName: "Jane Doe", email: "different@example.com", phone: "555-0199", dateOfBirth: "1975-01-01" })
     );
     expect(result.confidence).toBe("possible");
+  });
+
+  it("does not treat a missing middle initial as the same name (kept conservative on purpose)", () => {
+    const result = scoreCandidate(
+      { fullName: "Jane Doe" },
+      candidate({ email: "different@example.com", phone: "555-0199", dateOfBirth: "1975-01-01" })
+    );
+    expect(result.confidence).toBe("none");
   });
 
   it("matches a former/maiden name recorded as an alias", () => {
@@ -89,7 +103,10 @@ describe("scoreCandidate", () => {
   });
 
   it("treats reordered name tokens as the same name", () => {
-    const result = scoreCandidate({ fullName: "Doe Jane" }, candidate({ email: "x@example.com", phone: "555-0199" }));
+    const result = scoreCandidate(
+      { fullName: "Doe Jane" },
+      candidate({ fullName: "Jane Doe", email: "x@example.com", phone: "555-0199" })
+    );
     expect(result.matchedFields).toContain("fullName");
   });
 
