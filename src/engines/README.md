@@ -14,7 +14,7 @@ so the rules below exist to keep seven streams of work from colliding.
 | `calendar-alerts` | Calendar & deadline engine: alerts, replies, overdue, email of flags | c42–c47, c51, c53, c54, c64 |
 | `calendar-core` | Calendar & deadline engine: matter calendar, deadline calculators, limitations, task lists, stages | c91–c95 |
 | `billing-trust` | Billing & trust engine | c50, c52, c75–c83 |
-| `all-engines` | Cross-cutting: data import, permissions, mobile, reports, practice-area packs | c98–c105 |
+| `all-engines` | Cross-cutting: data import, permissions, mobile, reports, practice-area packs | c98–c105, c113 |
 | `platform` | Auth, ops queue, widget | c34, c35, c37, c38 |
 | `demo` | Fictional DEMO firm, guarded reset, guided walkthrough (`/demo`). The one engine allowed to call other engines' services: its job is to drive them all. Nothing imports it. | c106 |
 

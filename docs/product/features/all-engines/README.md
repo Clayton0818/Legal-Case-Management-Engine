@@ -9,6 +9,7 @@
 | c102 | Practice areas chosen in firm settings | P0 | Built | [c102-practice-areas.md](c102-practice-areas.md) |
 | c103 | Family Law pack (pilot practice area) | P0 | Built as draft data, pending attorney review | [c103-family-law-pack.md](c103-family-law-pack.md) |
 | c11, c112 | Client portal: one-time-link sign-in, updates, to-dos, documents we need | P0 | Built; client wording and sign-in email pending attorney review | [client-portal.md](client-portal.md) |
+| c113 | Two-way SMS/text channel for client communication | P1 | Vendor adapter + inbound webhook built; two-way thread UI and staff free-text reply deliberately deferred (see spec) | [c113-two-way-sms-channel.md](c113-two-way-sms-channel.md) |
 | c98, c100, c101, c104, c105 | Data import, mobile, reports, Immigration and PI packs | — | Not in this wave | — |
 
 ## How the three fit together
