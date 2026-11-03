@@ -20,8 +20,9 @@ These specs cover the Document engine cards in the case-management track. They b
 | [c85](c85-templates-fill-from-matter-data.md) | Templates that fill themselves from matter data | P1 | Firm-managed, lawyer-approved, versioned templates filled from matter fields; output is always a draft a lawyer reviews. | c84, c19 data model extension, c99 |
 | [c87](c87-file-all-matter-email.md) | File all matter email, not just court email | P1 | Emails to and from clients, opposing counsel and others filed to the right matter automatically when the match is certain, suggested when not, or with one click from Outlook/Gmail. | c64, c84, c88, c60, c56, c34 |
 | [c90](c90-closing-a-file.md) | Closing a file: final letter, return of papers, retention clock | P2 | A closing checklist (final invoice, trust at zero, closing letter, originals returned), then a retention clock after which a lawyer approves any destruction. | c95, c82, c79, c76, c85, c84, c2, c56, c6 |
+| [c86](c86-file-with-court-and-track-service.md) | File documents with the court and track service | P1 | Submit an attorney-approved document to the court's e-filing vendor (gated, no vendor wired yet), record the court's decision, track service on other parties, and link the stamped copy back to the matter. | c84, c4, c41, e-filing vendor decision + DPA |
 
-Suggested build order inside this group: c85 (templates) and c84 (store, not in this group) first; then c4 (e-signature) and c49 (checklists); then c39, c40, c41; then c87; c90 last (P2, and depends on billing/trust closing rules).
+Suggested build order inside this group: c85 (templates) and c84 (store, not in this group) first; then c4 (e-signature) and c49 (checklists); then c39, c40, c41; then c87; c86 (reuses c4's approved-document bar); c90 last (P2, and depends on billing/trust closing rules).
 
 ## Shared conventions used by every spec in this folder
 
@@ -71,6 +72,11 @@ Numbered by card so answers can be traced back.
 19. Should files with a minor child's orders (custody, support) get a longer suggested retention in the Family Law pack?
 20. Physical originals: does the product only track them, or also generate a signed receipt for returned originals?
 
+**c86 Filing with the court**
+21. Which e-filing vendor (eFileTexas directly, or an aggregator some firms already use), and is federal CM/ECF in scope for the pilot given it varies by district?
+22. Should a rejected filing's re-filed replacement be linked back to the row it replaces, or is the audit trail enough?
+23. Should "served" parties be restricted to the matter's indexed conflict-check parties (c56), or can staff free-text anyone (e.g. a process server)?
+
 ## Needs attorney review (group summary)
 
 - Engagement agreement template content, fee terms, AI-disclosure language (c10 §4.6) and whether e-signature is acceptable for every document type used (c4, c39, c41).
@@ -79,6 +85,7 @@ Numbered by card so answers can be traced back.
 - Starter templates and the "draft only" rule (c85).
 - Mailbox access scope, privilege tagging and screens for all-matter email (c87).
 - Retention periods, destruction approval and handling of client originals and client file requests (c90; Texas Ethics Opinion 627; Rule 1.16(d)).
+- E-filing vendor terms, costs and data handling (c86; `vendor.efiling`, reviewer: vendor DPA) before any adapter is wired in.
 
 ## Needs CPA review
 

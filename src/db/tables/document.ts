@@ -21,6 +21,8 @@
 //   generated_document_sources    which template version + field values produced a document version (c85)
 //   signature_envelopes           c4 — one e-signature request: signers, signing order, expiry, the document version it is locked to
 //   signature_signers             c4 — one signer on one envelope, in order
+//   court_filings                  c86 — one e-filing submission of an approved document version, and its status
+//   filing_service_records         c86 — service of a filing on one other party (opposing party, opposing counsel, …)
 //
 // Conventions (./foundation.ts): NOT NULL tenantId -> firms.id on every
 // table, text + CHECK for statuses, timestamptz, indexes leading with
@@ -691,6 +693,80 @@ export const signatureSigners = pgTable("signature_signers", {
 ]);
 
 // ---------------------------------------------------------------------------
+// Court filings (c86) — submit, track status and service
+// ---------------------------------------------------------------------------
+
+/**
+ * One e-filing submission of an approved document version (c86). Only a
+ * lawyer may create one (service.ts), and only against a document the
+ * lawyer has already approved — pre-filing client sign-off where c41
+ * requires it happens before the document reaches that status, so this
+ * table never re-checks it. Never corrected in place: a rejected filing is
+ * not resubmitted — the lawyer files a new version as a new row, the same
+ * way a signature envelope is voided rather than edited (c4).
+ */
+export const courtFilings = pgTable("court_filings", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  matterId: uuid("matter_id").notNull().references(() => matters.id),
+  /** The approved document version being filed. Never changes once set. */
+  documentId: uuid("document_id").notNull().references(() => documents.id),
+  /** 'petition' | 'motion' | 'response' | 'notice' | 'other'. */
+  filingType: text("filing_type").notNull(),
+  /** Staff-facing name of the court (e.g. "Travis County District Court"). A fact staff enter, not a venue decision (that's c73/family residencyVenue). */
+  court: text("court").notNull(),
+  /** 'draft' | 'submitted' | 'accepted' | 'rejected'. */
+  status: text("status").notNull().default("draft"),
+  /** Adapter name once a real e-filing vendor is wired (vendor.efiling); null = no vendor configured. */
+  vendor: text("vendor"),
+  vendorFilingId: text("vendor_filing_id"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  rejectionReason: text("rejection_reason"),
+  /** The court-stamped copy, once staff upload it back to the matter (c84) and link it here. */
+  stampedDocumentId: uuid("stamped_document_id").references(() => documents.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("court_filings_tenant_matter_idx").on(t.tenantId, t.matterId, t.status),
+  index("court_filings_tenant_document_idx").on(t.tenantId, t.documentId),
+  check("court_filings_filing_type_check", sql`${t.filingType} in ('petition','motion','response','notice','other')`),
+  check("court_filings_status_check", sql`${t.status} in ('draft','submitted','accepted','rejected')`),
+  check("court_filings_rejection_reason_check", sql`${t.status} <> 'rejected' or ${t.rejectionReason} is not null`),
+]);
+
+/**
+ * Service of a filing on one other party (c86). A filing may need service
+ * on several parties (opposing party, opposing counsel, …), so each gets its
+ * own row — partial service stays visible instead of one flag for the whole
+ * filing.
+ */
+export const filingServiceRecords = pgTable("filing_service_records", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  filingId: uuid("filing_id").notNull().references(() => courtFilings.id),
+  /** Who was served. A matter party when there is one; free text otherwise (e.g. a third-party agency). */
+  partyId: uuid("party_id").references(() => parties.id),
+  servedOnName: text("served_on_name"),
+  /** 'efiling' | 'mail' | 'certified_mail' | 'personal' | 'other'. */
+  method: text("method").notNull(),
+  /** 'pending' | 'completed' | 'failed'. */
+  status: text("status").notNull().default("pending"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
+  /** Proof of service, once uploaded back to the matter (c84) and linked here. */
+  proofDocumentId: uuid("proof_document_id").references(() => documents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("filing_service_records_tenant_filing_idx").on(t.tenantId, t.filingId),
+  check("filing_service_records_method_check", sql`${t.method} in ('efiling','mail','certified_mail','personal','other')`),
+  check("filing_service_records_status_check", sql`${t.status} in ('pending','completed','failed')`),
+  check("filing_service_records_failure_reason_check", sql`${t.status} <> 'failed' or ${t.failureReason} is not null`),
+  check("filing_service_records_served_on_check", sql`${t.partyId} is not null or ${t.servedOnName} is not null`),
+]);
+
+// ---------------------------------------------------------------------------
 // MIGRATION NOTES for the integration step (hand-add to the generated SQL):
 //
 // 1. RLS + the standard tenant_isolation policy (same text as migrations/0000)
@@ -700,7 +776,7 @@ export const signatureSigners = pgTable("signature_signers", {
 //    document_access_blocks, document_retention_rules,
 //    document_checklist_templates, document_checklist_items,
 //    document_templates, document_template_versions, generated_document_sources,
-//    signature_envelopes, signature_signers.
+//    signature_envelopes, signature_signers, court_filings, filing_service_records.
 //
 // 2. Staging grants app_runtime SELECT/INSERT/UPDATE/DELETE on new tables by
 //    default. Restrict as follows:
@@ -787,4 +863,15 @@ export const signatureSigners = pgTable("signature_signers", {
 //     deleted, so the signing history survives — spec §5 rule 2). No FK from
 //     signature_envelopes.documentId to a specific version needs an ON
 //     DELETE rule since `documents` rows are never deleted (note 3 above).
+//
+// 11. court_filings / filing_service_records (c86): RLS + tenant_isolation
+//     like every other table in this file. app_runtime keeps ordinary UPDATE
+//     (a filing's status moves draft → submitted → accepted/rejected in
+//     place; a service record's status moves pending → completed/failed);
+//     REVOKE DELETE on both — a rejected filing is never corrected in place,
+//     the lawyer files a new version as a new row instead (note 10's
+//     reasoning for signature_envelopes applies the same way here). No FK ON
+//     DELETE rule is needed from court_filings.documentId /
+//     stampedDocumentId or filing_service_records.proofDocumentId to a
+//     specific version, since `documents` rows are never deleted (note 3).
 // ---------------------------------------------------------------------------
