@@ -4,13 +4,17 @@
 //   const me = await requirePrincipal(tx, tenantId, "ops.view");
 //
 // Dev mode (today's flow): tenant = DEV_TENANT_ID, principal = DEV_USER_ID's
-// user or the synthetic dev firm_admin. Clerk mode: the vendor call is gated
+// user or the synthetic dev firm_admin. On a demo deployment DEV_TENANT_ID
+// may be "current-demo": the session then follows the newest demo firm, as
+// DEV_DEMO_USER's fictional staff member or the dev firm_admin
+// (src/engines/demo/follow.ts). Clerk mode: the vendor call is gated
 // on 'auth.vendor' — while that gate is pending every request gets HTTP 423
 // with the visible placeholder (fail safe: nobody is let in unverified).
 // None mode: HTTP 401.
 
 import { requireApproval } from "@/compliance/approvals";
 import { HttpError } from "@/tenancy/route";
+import { isFollowDemo } from "@/tenancy/demoFollow";
 import type { TenantTx } from "@/tenancy/withTenant";
 import { PLATFORM_GATES } from "@/engines/platform/gates";
 import { resolveAuthConfig, type Env } from "./config";
@@ -58,6 +62,28 @@ function toHttp(err: unknown): unknown {
   return err;
 }
 
+/**
+ * Dev mode with DEV_TENANT_ID=current-demo: swap in the newest demo firm
+ * (and DEV_DEMO_USER's fictional staff member, if set). DEV_USER_ID is not
+ * used in this mode, because user ids change with every reset.
+ */
+async function followDemoFirm(identity: VerifiedIdentity, env: Env): Promise<VerifiedIdentity> {
+  const [{ dbDemoFollowDeps, resolveDemoTarget, DemoFollowError }, { withTenant }] = await Promise.all([
+    import("@/engines/demo/follow"),
+    import("@/tenancy/withTenant"),
+  ]);
+  try {
+    const target = await resolveDemoTarget(dbDemoFollowDeps((id, fn) => withTenant(id, fn)), { env });
+    return { ...identity, tenantId: target.tenantId, subject: target.userId ?? "dev" };
+  } catch (err) {
+    if (err instanceof DemoFollowError) {
+      const status = err.code === "demo_off" || err.code === "no_demo_firm" ? 401 : 403;
+      throw new AuthError(status, err.message, `demo_${err.code}`);
+    }
+    throw err;
+  }
+}
+
 /** Verify the request's credential. `req` defaults to the current Next request. */
 export async function authenticateRequest(req?: AuthRequest, env: Env = process.env): Promise<VerifiedIdentity> {
   try {
@@ -70,6 +96,7 @@ export async function authenticateRequest(req?: AuthRequest, env: Env = process.
     const provider = getAuthProvider(env);
     const identity = await provider.authenticate(req ?? (await nextRequest()));
     if (!identity) throw new AuthError(401, "Please sign in.");
+    if (identity.provider === "dev" && isFollowDemo(identity.tenantId)) return await followDemoFirm(identity, env);
     return identity;
   } catch (err) {
     throw toHttp(err);

@@ -11,6 +11,7 @@ interface ResetResponse {
   generation?: number;
   retiredTenantIds?: string[];
   summary?: { ok: number; blocked: number; failed: number };
+  next?: string;
   error?: string;
 }
 
@@ -51,7 +52,7 @@ export function ResetDemoButton({ enabled }: { enabled: boolean }) {
             Fresh demo firm created (generation {result.generation}): <code>{result.newTenantId}</code>. Seed steps: {result.summary?.ok} ok,{" "}
             {result.summary?.blocked} blocked pending review, {result.summary?.failed} failed.
           </p>
-          <p className="mt-1">Point the presenter session at the new firm (see “Presenter setup” after reloading), then reload this page.</p>
+          <p className="mt-1">{result.next ?? "Point the presenter session at the new firm (see “Presenter setup” after reloading), then reload this page."}</p>
           <button type="button" className="mt-1 underline" onClick={() => window.location.reload()}>
             Reload
           </button>

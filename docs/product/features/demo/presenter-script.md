@@ -16,9 +16,11 @@ If you are asked a legal question ("Is that the right deadline in Texas?"), the 
 
 ## Before the demo (5 minutes)
 
-1. Open `/demo` and press **Reset demo firm**. The reset is an admin action, so sign in as the fictional firm administrator Morgan Testwell, or in dev mode leave `DEV_USER_ID` unset. A reset builds a fresh fictional firm through the product's own services and retires the old one. Nothing is deleted, because audit, trust and access logs are append-only.
-2. Follow the **Presenter setup** box. In dev mode, set `DEV_TENANT_ID` to the new firm id. For lawyer-only actions, set `DEV_USER_ID` to the fictional partner Avery Exampleton (the box shows both ids), then restart. When the session points at the current demo firm, the box turns green and the "open the real page" links become active. While it points at any other firm, those links stay disabled, so a demo can never show a real firm's data.
-3. Check the seed summary. Expect about 65 steps done, 5 **blocked pending review** and 0 failed. If any step failed, the red box says why. The usual cause is that document storage is not configured on the deployment; see "Deployment needs" below.
+1. Open `/demo` **first** (it also wakes the server and finds the current demo firm). On a free hosting plan the first load can take about a minute.
+2. Press **Reset demo firm**. The reset is an admin action, so run it as the dev administrator (leave `DEV_DEMO_USER` unset) or as the fictional firm administrator Morgan Testwell (`DEV_DEMO_USER=admin`). A reset builds a fresh fictional firm through the product's own services and retires the old one. Nothing is deleted, because audit, trust and access logs are append-only.
+3. Reload. With `DEV_TENANT_ID=current-demo` (recommended, see "Deployment needs") the session follows the new firm by itself and the **Presenter setup** box is green. With fixed ids instead, set `DEV_TENANT_ID` and `DEV_USER_ID` to the ids the box shows and restart. While the session points at any other firm, the "open the real page" links stay disabled, so a demo can never show a real firm's data.
+4. For lawyer-only actions (confirming a deadline, deciding a conflict), present as the fictional partner Avery Exampleton: `DEV_DEMO_USER=partner`. The partner cannot press Reset, so reset first.
+5. Check the seed summary. Expect about 65 steps done, 5 **blocked pending review** and 0 failed. If any step failed, the red box says why. The usual cause is that document storage is not configured on the deployment; see "Deployment needs" below.
 
 ## The walkthrough
 
@@ -80,7 +82,10 @@ If you are asked a legal question ("Is that the right deadline in Texas?"), the 
 
 ## Deployment needs (for whoever runs the demo deployment)
 
-- `DEMO_RESET_ENABLED=1` on the demo deployment only. The reset route and CLI refuse without it.
-- Create the first demo firm with `DEMO_RESET_ENABLED=1 npx tsx src/engines/demo/cli.ts create --by "Name"`. After that, use the button on `/demo`. `cli.ts status` prints the ids, and `cli.ts retire` switches the demo off.
+Set these on the demo deployment only, never on one that holds real firms:
+
+- `DEMO_RESET_ENABLED=1`. The reset route, the bootstrap route, the CLI and the current-demo session all refuse without it.
+- `DEV_TENANT_ID=current-demo` (recommended). The dev-mode session then follows the newest demo firm, so a reset needs no settings change. It only ever lands on a non-production firm that carries an active demo flag, re-checked inside that firm's own transaction, so it can never show a real firm. In this mode `DEV_USER_ID` is not used; choose who you present as with `DEV_DEMO_USER` (`partner`, `admin`, `associate`, `associate2`, `intake`, `bookkeeper` or `paralegal`; unset = the dev administrator). Routes that still read the firm synchronously (for example `/chat`) use the firm found by the last lookup, so open `/demo` once after the server starts.
+- The **first** demo firm: set a long random `DEMO_BOOTSTRAP_SECRET`, open `/demo`, type the secret into **Create the demo firm**. It works only while no demo firm exists; remove the secret afterwards. From a terminal instead: `DEMO_RESET_ENABLED=1 npx tsx src/engines/demo/cli.ts create --by "Name"` (`cli.ts status` prints the ids, and `cli.ts retire` switches the demo off).
 - In production mode, the document engine refuses in-memory storage. On the demo deployment, set `DOCUMENT_STORAGE=local`, `DOCUMENT_STORAGE_DIR`, `DOCUMENT_STORAGE_KEY` (32 random bytes, base64) and `DOCUMENT_STORAGE_ALLOW_LOCAL=1`. Without them, the document steps fail and `/demo` says so.
-- Each reset creates a new firm id, so the presenter session must be pointed at the new firm afterwards. This is an open question for Clayton; see `WAVE3_SUMMARY.md`.
+- With fixed ids instead of `current-demo`, each reset creates a new firm id, so `DEV_TENANT_ID` / `DEV_USER_ID` must be updated after every reset.

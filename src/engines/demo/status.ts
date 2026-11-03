@@ -5,10 +5,13 @@
 // reset the demo lives in a NEW firm, so the walkthrough tells the presenter
 // whether their session points at the current demo firm — and warns loudly
 // when it points at a real firm, because then the "open the real page" links
-// would show that firm's real data instead of the demo.
+// would show that firm's real data instead of the demo. With
+// DEV_TENANT_ID=current-demo the session follows the new firm by itself
+// (./follow.ts), and `following` says so.
 
 import { and, eq } from "drizzle-orm";
 import { users } from "@/db/schema";
+import { isFollowDemo } from "@/tenancy/demoFollow";
 import type { TenantTx } from "@/tenancy/withTenant";
 import { staffByKey } from "./fixtures";
 import { readDemoFlag, readFirmFacts } from "./guard";
@@ -20,6 +23,8 @@ export interface DemoStatus {
   session: { tenantId: string; kind: SessionKind };
   current: { tenantId: string; generation: number; seededAt: Date | null; presenterUserId: string | null; presenterName: string; adminUserId: string | null; adminName: string } | null;
   resetEnabled: boolean;
+  /** DEV_TENANT_ID=current-demo: the dev session follows the newest demo firm, so a reset needs no settings change. */
+  following: boolean;
 }
 
 /** Pure: classify the presenter's session firm. */
@@ -57,5 +62,6 @@ export async function loadDemoStatus(run: TenantRunner, sessionTenantId: string,
       ? { tenantId: current.tenantId, generation: current.generation, seededAt: current.seededAt, presenterUserId, presenterName: presenter.displayName, adminUserId, adminName: admin.displayName }
       : null,
     resetEnabled: demoResetEnabled(env),
+    following: isFollowDemo(env.DEV_TENANT_ID),
   };
 }

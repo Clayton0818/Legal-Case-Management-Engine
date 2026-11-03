@@ -7,6 +7,12 @@
 // firm the presenter's session belongs to. When that is not the current demo
 // firm, the links are disabled and a warning explains how to point the
 // session at the demo — so a demo can never accidentally show a real firm.
+// With DEV_TENANT_ID=current-demo the session follows the newest demo firm
+// by itself, so a reset needs no settings change.
+//
+// When there is no demo firm yet, the page offers "Create the demo firm"
+// (POST /api/demo/bootstrap, protected by DEMO_BOOTSTRAP_SECRET), so the
+// first demo needs no terminal.
 
 import Link from "next/link";
 import { WALKTHROUGH, resolveHref, type SnapshotPanel, type WalkthroughStep } from "@/engines/demo/walkthrough";
@@ -15,6 +21,7 @@ import type { DemoSnapshot } from "@/engines/demo/snapshot";
 import type { DemoStatus } from "@/engines/demo/status";
 import { DEMO_FIRM } from "@/engines/demo/fixtures";
 import { ResetDemoButton } from "./reset-button";
+import { BootstrapDemoForm } from "./bootstrap-form";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +58,9 @@ async function loadPageData(): Promise<PageData> {
 const fmt = (d: Date | string | null) =>
   d ? new Date(d).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "medium", timeStyle: "short" }) : "—";
 const money = (cents: string) => `$${(Number(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+
+/** The recommended dev-mode settings for a demo deployment. */
+const FOLLOW_ENV = "DEMO_RESET_ENABLED=1\nDEV_TENANT_ID=current-demo\nDEV_DEMO_USER=partner   # optional: lawyer-only actions; leave unset to reset";
 
 function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: "slate" | "amber" | "green" | "red" | "blue" }) {
   const tones = {
@@ -233,32 +243,49 @@ function ResetNote({ status }: { status: DemoStatus }) {
   if (!c) return null;
   return (
     <p className="mt-1 text-xs">
-      The reset is an admin action (settings.manage): press it as the fictional firm administrator {c.adminName} (<code>DEV_USER_ID={c.adminUserId ?? "<admin user id>"}</code>), or with DEV_USER_ID unset in dev mode.
+      The reset is an admin action (settings.manage). Press it as the dev administrator (leave <code>DEV_DEMO_USER</code> unset) or as the fictional firm
+      administrator {c.adminName} (<code>DEV_DEMO_USER=admin</code>). The partner, {c.presenterName}, can show lawyer-only actions but cannot reset.
     </p>
+  );
+}
+
+/** Shown when this deployment has no demo firm yet (or the page could not tell). */
+function CreateFirstDemo() {
+  return (
+    <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-semibold">No demo firm on this deployment yet? Create it here.</p>
+      <p>
+        Needs, on this deployment only: <code>DEMO_RESET_ENABLED=1</code> and a long random <code>DEMO_BOOTSTRAP_SECRET</code>. It works once: as soon as a
+        demo firm exists it refuses, and the Reset button takes over. For the smoothest demos also set:
+      </p>
+      <pre className="overflow-x-auto rounded bg-white/70 p-2 text-xs">{FOLLOW_ENV}</pre>
+      <p className="text-xs">
+        <code>DEV_TENANT_ID=current-demo</code> makes the presenter session follow the newest demo firm, so nothing needs changing after a reset. It only ever
+        picks a firm carrying the demo flag, never a real one.
+      </p>
+      <BootstrapDemoForm />
+      <p className="text-xs">
+        Alternative from a terminal with the database connection: <code>DEMO_RESET_ENABLED=1 npx tsx src/engines/demo/cli.ts create --by &quot;Your name&quot;</code>.
+      </p>
+    </div>
   );
 }
 
 function PresenterSetup({ status }: { status: DemoStatus }) {
   const c = status.current;
-  if (!c) {
-    return (
-      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-        <p className="font-semibold">No demo firm exists yet on this deployment.</p>
-        <p className="mt-1">
-          An operator creates the first one from a terminal on the demo deployment: <code>DEMO_RESET_ENABLED=1 npx tsx src/engines/demo/cli.ts create --by &quot;Your name&quot;</code>. After that, the reset button below does it in one click.
-        </p>
-      </div>
-    );
-  }
-  const env = `DEV_TENANT_ID=${c.tenantId}\nDEV_USER_ID=${c.presenterUserId ?? "<partner user id>"}`;
+  if (!c) return <CreateFirstDemo />;
   if (status.session.kind === "current_demo") {
     return (
       <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
         Your session is signed in to the current demo firm (generation {c.generation}, seeded {fmt(c.seededAt)}). The real-page links below show the fictional demo data.
+        {status.following && (
+          <p className="mt-1 text-xs">This deployment follows the newest demo firm (DEV_TENANT_ID=current-demo), so after a reset just reload.</p>
+        )}
         <ResetNote status={status} />
       </div>
     );
   }
+  const env = `DEV_TENANT_ID=${c.tenantId}\nDEV_USER_ID=${c.presenterUserId ?? "<partner user id>"}`;
   return (
     <div className={`rounded-lg border p-4 text-sm ${status.session.kind === "not_demo" ? "border-red-300 bg-red-50 text-red-900" : "border-amber-300 bg-amber-50 text-amber-950"}`}>
       <p className="font-semibold">
@@ -266,7 +293,9 @@ function PresenterSetup({ status }: { status: DemoStatus }) {
           ? "Your session belongs to a REAL firm, not the demo firm. Real-page links are disabled so a demo never shows real client data."
           : "Your session points at a retired demo firm (from before the last reset). Real-page links are disabled until you switch."}
       </p>
-      <p className="mt-1">The live panels below already show the current demo firm. To open the real staff pages on it, point the presenter session at it — in dev mode:</p>
+      <p className="mt-1">The live panels below already show the current demo firm. To open the real staff pages on it, point the presenter session at it. Recommended (follows every reset by itself):</p>
+      <pre className="mt-2 overflow-x-auto rounded bg-white/70 p-2 text-xs">{FOLLOW_ENV}</pre>
+      <p className="mt-1">Or the fixed ids of today&apos;s demo firm (they change with every reset):</p>
       <pre className="mt-2 overflow-x-auto rounded bg-white/70 p-2 text-xs">{env}</pre>
       <p className="mt-1 text-xs">({c.presenterName} is the fictional partner: a lawyer and the designated conflicts attorney, so lawyer-only actions can be shown.)</p>
       <ResetNote status={status} />
@@ -298,7 +327,7 @@ export default async function DemoPage() {
           Could not load the demo firm: {data.error}. The walkthrough text below still works; live panels and links need a signed-in session and a database.
         </div>
       )}
-      {status && <PresenterSetup status={status} />}
+      {status ? <PresenterSetup status={status} /> : <CreateFirstDemo />}
 
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4">
         <div className="text-sm text-slate-700">
