@@ -16,8 +16,9 @@ import {
   COPY,
   CALLER_TYPE_OPTIONS,
   LANGUAGE_OPTIONS,
-  PRACTICE_AREA_LABELS,
-  PRACTICE_AREA_OPTIONS,
+  postLanguageCopy,
+  practiceAreaLabelsFor,
+  practiceAreaOptionsForLanguage,
 } from "./copy";
 import {
   IntakeValidationError,
@@ -83,26 +84,31 @@ export function getPrompt(node: IntakeNodeId, answers: CollectedAnswers): Prompt
       };
 
     case "classify_practice_area": {
+      // c36: the caller's language is known by this node (set at
+      // language_routing, the node immediately before this one), so every
+      // message and option label here renders in that language instead of
+      // always defaulting to English.
+      const copy = postLanguageCopy(answers.language);
       if (!answers.practiceArea) {
-        return { node, kind: "free_text", message: COPY.askPracticeAreaFreeText, final: false };
+        return { node, kind: "free_text", message: copy.askPracticeAreaFreeText, final: false };
       }
       if (!answers.practiceAreaConfirmed) {
         if (answers.practiceArea === "unknown") {
           return {
             node,
             kind: "single_choice",
-            message: COPY.askManualPracticeArea,
-            options: [...PRACTICE_AREA_OPTIONS],
+            message: copy.askManualPracticeArea,
+            options: practiceAreaOptionsForLanguage(answers.language),
             final: false,
           };
         }
         return {
           node,
           kind: "confirm",
-          message: COPY.confirmGuess(PRACTICE_AREA_LABELS[answers.practiceArea]),
+          message: copy.confirmGuess(practiceAreaLabelsFor(answers.language)[answers.practiceArea]),
           options: [
-            { value: "yes", label: COPY.confirmYes },
-            { value: "no", label: COPY.confirmNo },
+            { value: "yes", label: copy.confirmYes },
+            { value: "no", label: copy.confirmNo },
           ],
           final: false,
         };
@@ -110,9 +116,13 @@ export function getPrompt(node: IntakeNodeId, answers: CollectedAnswers): Prompt
       // Confirmed but still on this node shouldn't happen via advance()
       // (it always moves to out_of_scope_gate on confirmation) — fall
       // through defensively rather than asking the caller anything odd.
-      return { node, kind: "final", message: COPY.entryComplete, final: true };
+      return { node, kind: "final", message: copy.entryComplete, final: true };
     }
 
+    // existing_caller_handoff and declined_conflict are reached directly
+    // from classify_caller (see advance() below) without ever passing
+    // through language_routing, so there is no selected language to use
+    // here — English-only by design, not a remaining c36 gap.
     case "existing_caller_handoff":
       return { node, kind: "final", message: COPY.existingCallerHandoff, final: true };
 
@@ -120,7 +130,8 @@ export function getPrompt(node: IntakeNodeId, answers: CollectedAnswers): Prompt
       return { node, kind: "final", message: COPY.opposingPartyDeclined, final: true };
 
     case "out_of_scope_gate":
-      return { node, kind: "final", message: COPY.entryComplete, final: true };
+      // Reached only from classify_practice_area, after language_routing.
+      return { node, kind: "final", message: postLanguageCopy(answers.language).entryComplete, final: true };
 
     default: {
       const exhaustive: never = node;
