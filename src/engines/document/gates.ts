@@ -14,6 +14,10 @@
 //   rules.fee_agreement_terms (RULE_GATES.feeAgreementTerms) — the fee terms in the engagement agreement (c39).
 //   rules.retention_periods   (RULE_GATES.retentionPeriods)  — applying a retention period to a
 //                                                              matter's documents (c90 destruction review).
+//   vendor.efiling            (VENDOR_GATES.efiling)         — submitting a filing to the court e-filing
+//                                                              vendor (c86). No vendor is wired yet, so
+//                                                              every submission fails closed with a pending
+//                                                              placeholder — see filing/adapter.ts.
 //
 // Nothing here is approved. Drafts are proposals for the reviewing attorney,
 // not approved wording.
@@ -81,6 +85,7 @@ export const DOCUMENT_COPY_GATES = {
 export const DOCUMENT_GATE_KEYS: readonly string[] = [
   VENDOR_GATES.objectStorage.key,
   VENDOR_GATES.esignature.key,
+  VENDOR_GATES.efiling.key,
   RULE_GATES.feeAgreementTerms.key,
   RULE_GATES.retentionPeriods.key,
   ...Object.values(DOCUMENT_COPY_GATES).map((g) => g.key),
