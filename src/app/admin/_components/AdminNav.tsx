@@ -1,6 +1,6 @@
 "use client";
 
-// Staff console navigation (espresso & champagne theme). Three shapes from
+// Staff console navigation (GlassMinimal3D theme). Three shapes from
 // one list:
 //   - desktop (lg+): links inside the floating espresso sidebar
 //   - tablet (md–lg): a horizontally scrolling row of pills
@@ -67,8 +67,8 @@ export function AdminTabNav() {
               aria-current={active ? "page" : undefined}
               className={
                 active
-                  ? "block whitespace-nowrap rounded-full bg-espresso px-4 py-2.5 text-sm font-semibold text-champagne-light"
-                  : "block whitespace-nowrap rounded-full bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:text-slate-900"
+                  ? "block whitespace-nowrap rounded-full bg-espresso/90 px-4 py-2.5 text-sm font-semibold text-champagne-light backdrop-blur-xl"
+                  : "block whitespace-nowrap rounded-full bg-white/70 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-xl transition hover:text-slate-900"
               }
             >
               {item.label}
@@ -85,7 +85,7 @@ export function AdminBottomNav() {
   const primary = ADMIN_NAV.slice(0, 3);
   const moreActive = ADMIN_NAV.slice(3).some((item) => isActive(pathname, item.href));
   return (
-    <div className="grid grid-cols-4 gap-1 rounded-full bg-espresso p-1.5 shadow-lg shadow-black/20">
+    <div className="grid grid-cols-4 gap-1 rounded-full bg-espresso/90 p-1.5 shadow-lg shadow-black/20 backdrop-blur-xl">
       {primary.map((item) => {
         const active = isActive(pathname, item.href);
         return (
@@ -113,7 +113,7 @@ export function AdminBottomNav() {
         >
           More
         </summary>
-        <ul className="absolute bottom-full right-0 mb-3 w-56 rounded-2xl bg-espresso p-2 shadow-xl shadow-black/30">
+        <ul className="absolute bottom-full right-0 mb-3 w-56 rounded-2xl bg-espresso/95 p-2 shadow-xl shadow-black/30 backdrop-blur-xl">
           {ADMIN_NAV.slice(3).map((item) => {
             const active = isActive(pathname, item.href);
             return (
