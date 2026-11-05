@@ -30,6 +30,10 @@ export default async function AllEnginesAdminPage() {
           <div className="font-medium text-slate-900">Practice areas</div>
           <div className="mt-1 text-sm text-slate-600">Switch areas on or off and review pack updates.</div>
         </Link>
+        <Link href="/admin/all-engines/branding" className="rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-400">
+          <div className="font-medium text-slate-900">Branding</div>
+          <div className="mt-1 text-sm text-slate-600">The firm&rsquo;s accent color, used across the whole console.</div>
+        </Link>
       </div>
       <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <h2 className="font-semibold text-slate-900">Waiting for review</h2>

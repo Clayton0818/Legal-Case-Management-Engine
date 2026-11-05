@@ -1,6 +1,6 @@
 // Firm settings (one `firm_settings` row per firm). Every number the founder
-// already decided — 24h firm reply, 48h client promise, 12h/24h deadline
-// questions, $4,500 retainer floor, Family Law pilot — is a normal,
+// already decided -- 24h firm reply, 48h client promise, 12h/24h deadline
+// questions, $4,500 retainer floor, Family Law pilot -- is a normal,
 // firm-editable setting with that default. These are NOT approval gates.
 
 import { eq } from "drizzle-orm";
@@ -44,7 +44,10 @@ export const DEFAULT_FIRM_SETTINGS: Readonly<FirmSettingsValues> = Object.freeze
   emailReplyTo: null,
   clientPortalUrl: null,
   engineSettings: {},
+  brandAccentColor: null,
 });
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 /** Merge a (possibly missing) row over the defaults. */
 export function withDefaults(row: FirmSettingsRow | null | undefined, tenantId: string): FirmSettings {
@@ -99,6 +102,9 @@ export function validateSettingsPatch(patch: Partial<FirmSettingsValues>): Parti
   if (patch.retainerFloorCents !== undefined && (!Number.isInteger(patch.retainerFloorCents) || patch.retainerFloorCents < 0)) {
     throw new Error("retainerFloorCents must be a whole number of cents, zero or more.");
   }
+  if (patch.brandAccentColor !== undefined && patch.brandAccentColor !== null && !HEX_COLOR.test(patch.brandAccentColor)) {
+    throw new Error("brandAccentColor must be a 6-digit hex color like #5E5CE6, or null to reset to the default.");
+  }
   if (
     patch.firmReplyHours !== undefined &&
     patch.clientPromiseHours !== undefined &&
@@ -115,7 +121,7 @@ export async function getFirmSettings(tx: TenantTx, tenantId: string): Promise<F
   return withDefaults(row, tenantId);
 }
 
-/** Create or update the firm's settings (owner/admin only — enforce the role at the route). Logged. */
+/** Create or update the firm's settings (owner/admin only -- enforce the role at the route). Logged. */
 export async function updateFirmSettings(
   tx: TenantTx,
   tenantId: string,

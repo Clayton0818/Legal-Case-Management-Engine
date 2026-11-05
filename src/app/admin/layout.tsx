@@ -1,16 +1,39 @@
 // Admin/staff console (board card c24). Real path segment (/admin/...), not
-// a Next.js route group — the URL distinction matters here since this is a
+// a Next.js route group -- the URL distinction matters here since this is a
 // staff-only surface, separate from the client-facing /chat/... path, and
 // eventually sits behind real auth (Clerk/WorkOS, ADR-0001 §D8) once that's
 // wired up. `middleware.ts`'s auth stub currently tags every request as
-// unauthenticated — do not treat this layout as access-controlled yet.
+// unauthenticated -- do not treat this layout as access-controlled yet.
 //
-// Espresso & champagne theme: floating espresso sidebar on desktop, a pill
-// tab row on tablet, and a floating bottom bar on phones (see AdminNav).
-// The content area carries `.lux` (see globals.css) so older inner pages
-// pick up serif titles, soft cards and pill buttons.
+// GlassMinimal3D theme (direction 7, board-approved 2026-11-03): a floating
+// frosted sidebar on desktop, a pill tab row on tablet, and a floating
+// bottom bar on phones (see AdminNav), unchanged in shape from the prior
+// theme -- only the surfaces, color and (via `.lux`/`.glass-card` in
+// globals.css) the inner cards changed. The content area still carries
+// `.lux` so older inner pages pick up the new finish without edits.
+//
+// `--brand` is set here, inline, from this tenant's firmSettings.brandAccentColor
+// (board card: founder-direct "color code their page" request, 2026-11-03) --
+// every indigo/sky/blue-colored utility site-wide re-tints from this one
+// value (tailwind.config.js). Best-effort: auth is still a stub (see below),
+// so a failure to resolve a tenant just falls back to the product default
+// set in globals.css, instead of breaking the console.
 import Link from "next/link";
 import { AdminBottomNav, AdminSidebarNav, AdminTabNav } from "./_components/AdminNav";
+
+async function brandAccentColor(): Promise<string | null> {
+  try {
+    const [{ resolveRequestTenantId }, { withTenant }, { getFirmSettings }] = await Promise.all([
+      import("@/auth/request"),
+      import("@/tenancy/withTenant"),
+      import("@/core/firmSettings"),
+    ]);
+    const tenantId = await resolveRequestTenantId();
+    return await withTenant(tenantId, async (tx) => (await getFirmSettings(tx, tenantId)).brandAccentColor);
+  } catch {
+    return null;
+  }
+}
 
 function ShieldMark({ className, stroke }: { className?: string; stroke: string }) {
   return (
@@ -21,15 +44,17 @@ function ShieldMark({ className, stroke }: { className?: string; stroke: string 
   );
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const brand = await brandAccentColor();
+  const style = brand ? ({ "--brand": brand } as React.CSSProperties) : undefined;
   return (
-    <div className="min-h-screen bg-slate-50 lg:flex lg:gap-4 lg:p-4">
-      {/* Desktop: floating espresso sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col rounded-3xl bg-espresso px-3.5 py-6 lg:flex">
+    <div className="glass-bg min-h-screen bg-slate-50 lg:flex lg:gap-4 lg:p-4" style={style}>
+      {/* Desktop: floating frosted sidebar */}
+      <aside className="hidden w-60 shrink-0 flex-col rounded-3xl bg-espresso/90 px-3.5 py-6 backdrop-blur-xl lg:flex">
         <Link href="/admin" className="mb-6 flex items-center gap-3 px-3">
-          <ShieldMark className="h-7 w-6" stroke="#D4B07A" />
+          <ShieldMark className="h-7 w-6" stroke="var(--brand, #5E5CE6)" />
           <span className="flex flex-col">
-            <span className="font-display text-2xl leading-none text-ivory-bright">Staff Console</span>
+            <span className="font-display text-2xl font-normal leading-none tracking-tight text-ivory-bright">Staff Console</span>
             <span className="mt-1 text-xs text-taupe-dim">Legal Intake</span>
           </span>
         </Link>
@@ -42,8 +67,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Tablet + phone header */}
         <header className="flex items-center justify-between gap-3 px-4 pt-4 md:px-6 lg:hidden">
           <Link href="/admin" className="flex items-center gap-2.5">
-            <ShieldMark className="h-6 w-5" stroke="#7A5524" />
-            <span className="font-display text-2xl leading-none text-slate-900">Staff Console</span>
+            <ShieldMark className="h-6 w-5" stroke="var(--brand, #5E5CE6)" />
+            <span className="font-display text-2xl font-normal leading-none tracking-tight text-slate-900">Staff Console</span>
           </Link>
         </header>
         <nav aria-label="Staff console" className="hidden px-4 pt-4 md:block md:px-6 lg:hidden">

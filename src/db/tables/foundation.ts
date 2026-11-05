@@ -9,7 +9,7 @@
 // Conventions, identical to src/db/schema.ts:
 //  - every tenant-scoped table has a NOT NULL `tenantId` -> firms.id and gets
 //    the standard `tenant_isolation` RLS policy in the generated migration
-//    (hand-added, since Drizzle's DSL does not express RLS — see
+//    (hand-added, since Drizzle's DSL does not express RLS -- see
 //    migrations/0000_*.sql for the exact policy text);
 //  - status-like columns are text + CHECK constraints (easy to read in SQL);
 //  - timestamps are timestamptz.
@@ -54,7 +54,7 @@ import type {
 /**
  * The contact registry. This is the SAME SQL table as `parties` in
  * schema.ts (extended there with aliases, emails, phones, safe-contact
- * preferences and DV sensitivity) — one registry for every engine, so the
+ * preferences and DV sensitivity) -- one registry for every engine, so the
  * conflict-check party index (c56) sees every person any engine records.
  */
 export const contacts = parties;
@@ -124,6 +124,12 @@ export const firmSettings = pgTable("firm_settings", {
   // --- Extension point: per-engine settings (keyed by engine slug) ---
   engineSettings: jsonb("engine_settings").$type<EngineSettings>().notNull().default({}),
 
+  /** Branding (founder direction, 2026-11-03): the firm's own accent color,
+   *  '#RRGGBB' or null for the product default. Drives --brand (globals.css)
+   *  on the staff console, which every indigo/sky/blue-colored element
+   *  site-wide is tinted from -- see src/app/admin/layout.tsx. */
+  brandAccentColor: text("brand_accent_color"),
+
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedByUserId: uuid("updated_by_user_id").references(() => users.id),
 }, (table) => [
@@ -190,7 +196,7 @@ export const calendarEvents = pgTable("calendar_events", {
 ]);
 
 // ---------------------------------------------------------------------------
-// Tasks (one mechanism for every due item: c40–c46, c49, c52, c54, c69 …)
+// Tasks (one mechanism for every due item: c40-c46, c49, c52, c54, c69 ...)
 // ---------------------------------------------------------------------------
 
 export const tasks = pgTable("tasks", {
@@ -216,19 +222,19 @@ export const tasks = pgTable("tasks", {
   deadlineCritical: boolean("deadline_critical").notNull().default(false),
   /** 'open' | 'done' | 'cancelled'. */
   status: text("status").notNull().default("open"),
-  /** 'internal' (firm only — c45) or 'client' (shown to the owning client — c46). */
+  /** 'internal' (firm only -- c45) or 'client' (shown to the owning client -- c46). */
   visibility: text("visibility").notNull().default("internal"),
   /** Board card that created it, e.g. 'c43'. */
   sourceCard: text("source_card"),
   /** Pointer to the engine record behind the task (e.g. 'message:<uuid>'). */
   sourceRef: text("source_ref"),
   relatedCalendarEventId: uuid("related_calendar_event_id").references(() => calendarEvents.id),
-  /** Engine-specific extra data. Internal only — never sent to clients. */
+  /** Engine-specific extra data. Internal only -- never sent to clients. */
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   completedByUserId: uuid("completed_by_user_id").references(() => users.id),
   completedByPartyId: uuid("completed_by_party_id").references(() => parties.id),
-  /** Why the task was completed/cancelled/reassigned/re-dated — no silent clearing (c45). */
+  /** Why the task was completed/cancelled/reassigned/re-dated -- no silent clearing (c45). */
   lastChangeReason: text("last_change_reason"),
   createdByUserId: uuid("created_by_user_id").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -262,7 +268,7 @@ export const flags = pgTable("flags", {
   type: text("type").notNull(),
   /** 'info' | 'warning' | 'high' | 'critical'. */
   severity: text("severity").notNull(),
-  /** 'internal' (firm users only — founder rule for overdue flags), 'client', or 'both'. */
+  /** 'internal' (firm users only -- founder rule for overdue flags), 'client', or 'both'. */
   audience: text("audience").notNull(),
   matterId: uuid("matter_id").references(() => matters.id),
   taskId: uuid("task_id").references(() => tasks.id),
@@ -270,7 +276,7 @@ export const flags = pgTable("flags", {
   title: text("title").notNull(),
   /** Internal detail text. Never shown to a client. */
   summary: text("summary"),
-  /** Internal structured detail (why it fired, durations …). Never shown to a client. */
+  /** Internal structured detail (why it fired, durations ...). Never shown to a client. */
   details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
   /** legalCopy() gate key rendered on the client side for client/both flags. */
   clientCopyKey: text("client_copy_key"),
@@ -293,7 +299,7 @@ export const flags = pgTable("flags", {
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id),
   resolutionReason: text("resolution_reason"),
-  /** c47: "waiting on the court until Oct 10" — a check-back date recorded with the reason. */
+  /** c47: "waiting on the court until Oct 10" -- a check-back date recorded with the reason. */
   checkBackAt: timestamp("check_back_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -342,11 +348,11 @@ export const notificationOutbox = pgTable("notification_outbox", {
   urgent: boolean("urgent").notNull().default(false),
   /**
    * 'pending'    queued for the worker
-   * 'held'       blocked by a pending approval gate (vendor DPA / copy review) or the stub provider — nothing sent
+   * 'held'       blocked by a pending approval gate (vendor DPA / copy review) or the stub provider -- nothing sent
    * 'sent'       handed to the provider
    * 'delivered'  provider confirmed (in_app rows are delivered on insert)
    * 'bounced' | 'failed'
-   * 'suppressed' deliberately not sent (no safe address, no SMS consent, opted out) — reason in last_error
+   * 'suppressed' deliberately not sent (no safe address, no SMS consent, opted out) -- reason in last_error
    * 'cancelled'
    */
   status: text("status").notNull().default("pending"),
@@ -390,7 +396,7 @@ export const notificationOutbox = pgTable("notification_outbox", {
 export const auditEvents = pgTable("audit_events", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid("tenant_id").notNull().references(() => firms.id),
-  /** Engine slug that wrote the event: 'intake', 'conflict-check', 'document', 'calendar-alerts', … or 'core'. */
+  /** Engine slug that wrote the event: 'intake', 'conflict-check', 'document', 'calendar-alerts', ... or 'core'. */
   engine: text("engine").notNull(),
   /** Dotted action name, e.g. 'task.completed', 'flag.raised', 'approval.blocked'. */
   action: text("action").notNull(),
@@ -401,7 +407,7 @@ export const auditEvents = pgTable("audit_events", {
   actorType: text("actor_type").notNull(),
   actorUserId: uuid("actor_user_id").references(() => users.id),
   actorPartyId: uuid("actor_party_id").references(() => parties.id),
-  /** Human reason where one is required (clearing flags, changing dates …). */
+  /** Human reason where one is required (clearing flags, changing dates ...). */
   reason: text("reason"),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
@@ -413,7 +419,7 @@ export const auditEvents = pgTable("audit_events", {
 ]);
 
 // ---------------------------------------------------------------------------
-// Compliance approvals (platform-level — NOT tenant-scoped)
+// Compliance approvals (platform-level -- NOT tenant-scoped)
 // ---------------------------------------------------------------------------
 
 /**
@@ -453,7 +459,7 @@ export const complianceApprovals = pgTable("compliance_approvals", {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// c34 — capabilities layered on top of users.role
+// c34 -- capabilities layered on top of users.role
 // ---------------------------------------------------------------------------
 
 /**
@@ -491,7 +497,7 @@ const STAFF_ROLE_SQL = sql.raw(
 );
 
 // ---------------------------------------------------------------------------
-// c99 — per-firm overrides of the role × right matrix
+// c99 -- per-firm overrides of the role x right matrix
 // ---------------------------------------------------------------------------
 
 /**
@@ -518,7 +524,7 @@ export const permissionOverrides = pgTable("permission_overrides", {
 ]);
 
 // ---------------------------------------------------------------------------
-// c99 — product roles assigned on top of the c34 account role
+// c99 -- product roles assigned on top of the c34 account role
 // ---------------------------------------------------------------------------
 
 /**
@@ -606,7 +612,9 @@ export const activeEthicalScreens = pgView("active_ethical_screens", {
 //    CREATE POLICY app_runtime_read ON compliance_approvals FOR SELECT TO app_runtime USING (true);
 //    GRANT SELECT ON compliance_approvals TO app_runtime;
 //    REVOKE ALL ON compliance_approvals FROM anon, authenticated;
-// 5. `ALTER TYPE party_role ADD VALUE …` statements cannot be used in the same
-//    transaction that adds them — drizzle-kit emits them as separate
+// 5. `ALTER TYPE party_role ADD VALUE ...` statements cannot be used in the same
+//    transaction that adds them -- drizzle-kit emits them as separate
 //    statements; keep them first in the file.
+// 6. firm_settings gained `brand_accent_color text` (nullable, additive) --
+//    no RLS or GRANT change beyond the existing firm_settings grants in #2.
 // ---------------------------------------------------------------------------

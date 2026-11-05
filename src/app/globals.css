@@ -2,33 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Espresso & champagne theme — base layer. Fonts are loaded with a <link>
-   in src/app/layout.tsx (no build-time network fetch). */
+/* GlassMinimal3D theme -- base layer. Font (Inter) is loaded with a <link>
+   in src/app/layout.tsx (no build-time network fetch).
+
+   `--brand` drives every sky/blue/indigo/champagne shade in
+   tailwind.config.js via color-mix(). The default below is overridden
+   per-tenant with an inline style on the admin shell
+   (src/app/admin/layout.tsx), set from firmSettings.brandAccentColor --
+   that one setting is what lets a firm "color code their page". */
 @layer base {
+  :root {
+    --brand: #5E5CE6;
+  }
+
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
   }
 
-  /* One visible focus style everywhere: champagne ring, offset so it reads
-     on both the dark client surfaces and the light staff console. */
+  /* One visible focus style everywhere, tied to the tenant's brand color so
+     it stays on-brand instead of being a fixed accent. */
   :focus-visible {
-    outline: 2px solid #d4b07a;
+    outline: 2px solid var(--brand, #5E5CE6);
     outline-offset: 2px;
   }
 }
 
-/* Inner pages (staff console content area and the demo body carry `.lux`).
-   Older pages are written with plain Tailwind cards, tables and buttons;
-   these scoped rules give them the Style B finish — serif page titles, soft
-   rounded cards, pill buttons — without editing each page. Unlayered and
-   class-scoped so they win over the matching utilities. Colour is never set
-   here, so dark espresso panels keep their own text colour. */
+/* A soft, restrained color field behind the glass panels -- not a loud
+   gradient wash, just enough for the frosted surfaces below to catch.
+   Applied once to the admin shell (src/app/admin/layout.tsx); everything
+   inside it sits on top. */
+.glass-bg {
+  position: relative;
+}
+.glass-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(640px 420px at 12% 6%, color-mix(in srgb, var(--brand, #5E5CE6) 16%, transparent), transparent 60%),
+    radial-gradient(640px 460px at 88% 2%, color-mix(in srgb, var(--brand, #5E5CE6) 10%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 50% 60%, rgba(170, 210, 255, .10), transparent 65%);
+  filter: blur(2px);
+}
+
+/* Inner pages (the staff console content area carries `.lux`). Older pages
+   are written with plain Tailwind cards, tables and buttons; these scoped
+   rules give them the GlassMinimal3D finish -- quiet headlines, frosted
+   translucent cards with a restrained 3D hover-tilt, pill buttons with a
+   soft press-down -- without editing each page. Unlayered and class-scoped
+   so they win over the matching utilities. Color is never set here, so
+   dark panels keep their own text color. */
 .lux h1 {
-  font-family: "Instrument Serif", Georgia, Cambria, "Times New Roman", serif;
   font-weight: 400;
   font-size: 2.25rem;
   line-height: 1.05;
   letter-spacing: -0.02em;
+  color: #1D1D1F;
 }
 @media (min-width: 768px) {
   .lux h1 {
@@ -40,20 +71,35 @@
   font-size: 0.75rem;
 }
 
-/* Cards and table wrappers: soft rounded white panels on ivory. */
+/* Cards and table wrappers: frosted glass, flat at rest, a restrained
+   tilt-toward-the-viewer + lift only on hover (not a permanent lean). */
 .lux .border.bg-white:is(.rounded, .rounded-md, .rounded-lg, .rounded-xl) {
+  background-color: rgba(255, 255, 255, .55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: 1.125rem;
-  border-color: rgba(36, 27, 23, 0.06);
-  box-shadow: 0 1px 2px rgba(36, 27, 23, 0.05);
+  border-color: rgba(0, 0, 0, .06);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 20px 36px -22px rgba(0, 0, 0, .14);
+  transform: perspective(1600px) rotateX(0deg) rotateY(0deg) translateZ(0);
+  transform-style: preserve-3d;
+  transition: transform .35s cubic-bezier(.2, .8, .2, 1), box-shadow .35s ease, background-color .25s ease;
+}
+.lux .border.bg-white:is(.rounded, .rounded-md, .rounded-lg, .rounded-xl):hover {
+  background-color: rgba(255, 255, 255, .72);
+  transform: perspective(1600px) rotateX(1.5deg) rotateY(-1.5deg) translateZ(8px);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 32px 46px -20px rgba(0, 0, 0, .18);
 }
 .lux .border:is(.rounded, .rounded-md, .rounded-lg):is(.bg-red-50, .bg-amber-50, .bg-emerald-50, .bg-green-50, .bg-sky-50, .bg-blue-50) {
   border-radius: 1.125rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .lux table thead:is(.bg-slate-50, .bg-slate-100) {
-  background-color: #fbf9f6;
+  background-color: rgba(251, 251, 252, .8);
 }
 
-/* Filled buttons and button-like links become 44px pills. */
+/* Filled buttons and button-like links: frosted pills with a soft
+   hover-lift and a gentle press-down on click, instead of a flat fill. */
 .lux :is(button, a, input[type="submit"])[class*="bg-"]:is(.rounded, .rounded-md, .rounded-lg) {
   border-radius: 9999px;
   min-height: 2.75rem;
@@ -62,9 +108,38 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transform: perspective(600px) translateZ(0);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.lux :is(button, a, input[type="submit"])[class*="bg-"]:is(.rounded, .rounded-md, .rounded-lg):hover {
+  transform: perspective(600px) translateZ(8px) translateY(-1px);
+  filter: brightness(1.06);
+}
+.lux :is(button, a, input[type="submit"])[class*="bg-"]:is(.rounded, .rounded-md, .rounded-lg):active {
+  transform: perspective(600px) translateZ(0) translateY(1px) rotateX(3deg);
 }
 
-/* Form fields: softer corners, warm border. */
+/* Form fields: softer corners, hairline border. */
 .lux :is(input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]), select, textarea):is(.rounded, .rounded-md, .rounded-lg) {
   border-radius: 0.875rem;
+}
+
+/* Reusable glass primitives for components that build their own markup
+   (see src/app/admin/_components/ui.tsx `Card`) rather than going through
+   the `.lux` utility-matching rules above. Same values as the approved
+   GlassMinimal3D mockup. */
+.glass-card {
+  background: rgba(255, 255, 255, .48);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(255, 255, 255, .7);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 20px 36px -22px rgba(0, 0, 0, .14);
+  transform: perspective(1600px) rotateX(0deg) rotateY(0deg) translateZ(0);
+  transform-style: preserve-3d;
+  transition: transform .35s cubic-bezier(.2, .8, .2, 1), box-shadow .35s ease, background .25s ease;
+}
+.glass-card:hover {
+  background: rgba(255, 255, 255, .64);
+  transform: perspective(1600px) rotateX(3deg) rotateY(-3deg) translateZ(18px);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 38px 54px -20px rgba(0, 0, 0, .2);
 }

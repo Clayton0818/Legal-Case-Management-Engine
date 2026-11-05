@@ -1,6 +1,8 @@
-// Shared building blocks for the inner staff pages (espresso & champagne,
-// Style B). Styling only — no data or behaviour lives here. Red / amber /
-// green stay semantic (danger / warning / success) so alerts keep meaning.
+// Shared building blocks for the inner staff pages (GlassMinimal3D, board-
+// approved 2026-11-03). Styling only -- no data or behaviour lives here. Red /
+// amber / green stay semantic (danger / warning / success) so alerts keep
+// meaning; "brand" tracks the tenant's own accent color (see
+// src/app/admin/layout.tsx and the Branding settings page).
 
 type Tone = "neutral" | "info" | "warning" | "danger" | "success" | "brand";
 
@@ -53,8 +55,8 @@ export function SectionTitle({ children, hint }: { children: React.ReactNode; hi
 }
 
 export function Card({ children, className = "", dark = false }: { children: React.ReactNode; className?: string; dark?: boolean }) {
-  const surface = dark ? "bg-espresso text-ivory-text" : "bg-white shadow-[0_1px_2px_rgba(36,27,23,0.05)] ring-1 ring-slate-900/5";
-  return <div className={`rounded-[1.125rem] ${surface} ${className}`}>{children}</div>;
+  const surface = dark ? "bg-espresso/90 text-ivory-text backdrop-blur-xl" : "glass-card";
+  return <div className={`rounded-[1.375rem] ${surface} ${className}`}>{children}</div>;
 }
 
 export function Notice({ tone = "warning", children }: { tone?: keyof typeof NOTICE_TONE; children: React.ReactNode }) {
