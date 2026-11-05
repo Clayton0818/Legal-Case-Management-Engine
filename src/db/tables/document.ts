@@ -12,6 +12,7 @@
 //   document_version_files     storage + checksum + malware-scan facts for each version's bytes
 //   document_text              extracted / OCR text and the full-text search vector
 //   document_access_log        append-only log of every view, download, search and denial
+//   document_redactions        c88 — detected / confirmed / applied redactions of sensitive text
 //   document_access_blocks     local mirror of ethical screens (c60) until a shared screens table exists
 //   document_retention_rules   firm-entered retention periods (gated config; applied only via rules.retention_periods)
 //   document_checklist_templates  firm-set required-documents checklist per practice area (c49)
@@ -293,7 +294,10 @@ export const documentAccessLog = pgTable("document_access_log", {
   actorType: text("actor_type").notNull(),
   actorUserId: uuid("actor_user_id").references(() => users.id),
   actorPartyId: uuid("actor_party_id").references(() => parties.id),
-  /** 'view' | 'download' | 'list' | 'search' | 'version_history'. */
+  /**
+   * 'view' | 'download' | 'list' | 'search' | 'version_history' | 'privilege_change' | 'redaction' (c88 — the
+   * last two are completed mutations, not access decisions, so they are always logged as outcome 'allowed').
+   */
   action: text("action").notNull(),
   /** 'allowed' | 'denied'. Denials are logged too. */
   outcome: text("outcome").notNull(),
@@ -309,10 +313,80 @@ export const documentAccessLog = pgTable("document_access_log", {
   check("document_access_log_actor_type_check", sql`${t.actorType} in ('user','client','system')`),
   check(
     "document_access_log_action_check",
-    sql`${t.action} in ('view','download','list','search','version_history')`
+    sql`${t.action} in ('view','download','list','search','version_history','privilege_change','redaction')`
   ),
   check("document_access_log_outcome_check", sql`${t.outcome} in ('allowed','denied')`),
   check("document_access_log_denied_reason_check", sql`${t.outcome} <> 'denied' or ${t.reason} is not null`),
+]);
+
+// ---------------------------------------------------------------------------
+// Redactions (c88)
+// ---------------------------------------------------------------------------
+
+export type RedactionCategory = "ssn" | "account_number" | "minor_name";
+
+/**
+ * One candidate or confirmed span, as an OFFSET into the version's extracted
+ * text plus a category — never the matched text itself (c88: "do not store
+ * the actual sensitive matched text"), so a row in this table reveals
+ * nothing sensitive even before a human reviews it.
+ */
+export interface RedactionSpan {
+  start: number;
+  end: number;
+  category: RedactionCategory;
+}
+
+/**
+ * One pass of the redaction tool against one document VERSION (c88):
+ * heuristic detection ('suggested') -> a person reviews and picks the exact
+ * spans to remove ('confirmed') -> a new, redacted version is produced
+ * ('applied'), or the person declines everything ('rejected'). Never
+ * auto-applied — src/engines/document/redaction/service.ts always requires
+ * a human-confirmed span list and a reason before producing a new version.
+ *
+ * `suggestedSpans`/`confirmedSpans` are offsets + category only (see
+ * RedactionSpan) — this table never holds the SSN, account number or name
+ * text that was found, before or after it is applied.
+ */
+export const documentRedactions = pgTable("document_redactions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  matterId: uuid("matter_id").notNull().references(() => matters.id),
+  groupId: uuid("group_id").notNull().references(() => documentGroups.id),
+  /** The version the heuristic pass ran against. */
+  sourceDocumentId: uuid("source_document_id").notNull().references(() => documents.id),
+  /** The new version produced once applied; null until then. */
+  redactedDocumentId: uuid("redacted_document_id").references(() => documents.id),
+  /** 'suggested' | 'confirmed' | 'applied' | 'rejected'. */
+  status: text("status").notNull().default("suggested"),
+  /** How spans were found. Always 'heuristic' for now — no AI/vendor call in this pass (c88 scope; see detect.ts header). */
+  method: text("method").notNull().default("heuristic"),
+  suggestedSpans: jsonb("suggested_spans").$type<RedactionSpan[]>().notNull().default([]),
+  /** Distinct categories suggested, for display without decoding spans. */
+  suggestedCategories: text("suggested_categories").array().notNull().default(sql`'{}'::text[]`),
+  /** sha256 of the extracted text the spans were computed against, so a confirm against stale offsets is refused. */
+  textSha256: text("text_sha256").notNull(),
+  suggestedAt: timestamp("suggested_at", { withTimezone: true }).notNull().defaultNow(),
+  /** The EXACT spans a human confirmed — always a subset of suggestedSpans, never a span the heuristic did not already flag. */
+  confirmedSpans: jsonb("confirmed_spans").$type<RedactionSpan[]>(),
+  confirmedByUserId: uuid("confirmed_by_user_id").references(() => users.id),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  /** Why this was redacted (or declined) — required for either outcome; this IS the "person confirms" record (c88). */
+  reason: text("reason"),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+}, (t) => [
+  index("document_redactions_tenant_matter_idx").on(t.tenantId, t.matterId, t.status),
+  index("document_redactions_tenant_group_idx").on(t.tenantId, t.groupId),
+  index("document_redactions_tenant_source_idx").on(t.tenantId, t.sourceDocumentId),
+  check("document_redactions_status_check", sql`${t.status} in ('suggested','confirmed','applied','rejected')`),
+  check("document_redactions_method_check", sql`${t.method} = 'heuristic'`),
+  check(
+    "document_redactions_applied_check",
+    sql`${t.status} <> 'applied' or (${t.redactedDocumentId} is not null and ${t.appliedAt} is not null and ${t.confirmedByUserId} is not null and ${t.confirmedAt} is not null and ${t.reason} is not null)`
+  ),
+  check("document_redactions_rejected_check", sql`${t.status} <> 'rejected' or (${t.rejectedAt} is not null and ${t.reason} is not null)`),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -874,4 +948,21 @@ export const filingServiceRecords = pgTable("filing_service_records", {
 //     DELETE rule is needed from court_filings.documentId /
 //     stampedDocumentId or filing_service_records.proofDocumentId to a
 //     specific version, since `documents` rows are never deleted (note 3).
+//
+// 12. c88 — document_redactions + document_access_log widened:
+//     - document_redactions: RLS + tenant_isolation like every other table
+//       here. app_runtime keeps ordinary UPDATE (status moves suggested ->
+//       confirmed/rejected -> applied in place, same reasoning as note 8);
+//       REVOKE DELETE (a declined or applied redaction pass is a permanent
+//       record of what was reviewed, never removed).
+//     - document_access_log.action's CHECK constraint must be widened to add
+//       'privilege_change' and 'redaction' to the existing five values
+//       (ALTER TABLE document_access_log DROP CONSTRAINT
+//       document_access_log_action_check, then ADD CONSTRAINT with the new
+//       list) — this table already predates this migration, so drizzle-kit
+//       will emit this as an ALTER, not a CREATE; confirm it targets the
+//       existing constraint name. No change to the outcome CHECK: both new
+//       actions are only ever logged as 'allowed' (they are completed
+//       mutations the caller already had permission for, not access
+//       decisions with a possible denial).
 // ---------------------------------------------------------------------------
