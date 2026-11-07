@@ -1,11 +1,12 @@
-// Approval gates owned by the All-engines engine (c99, c102, c103).
+// Approval gates owned by the All-engines engine (c99, c102, c103, c105).
 //
 // Nothing here is approved. Until a reviewer's sign-off is recorded
 // (`npm run compliance -- approve …`):
 //  - every client-facing sentence of a practice-area pack renders as a visible
 //    "[PENDING ATTORNEY REVIEW …]" placeholder via legalCopy();
-//  - every Texas family-law rule reference blocks (requireApproval throws
-//    PendingApprovalError) in whichever engine tries to apply it.
+//  - every Texas family-law or personal-injury rule reference blocks
+//    (requireApproval throws PendingApprovalError) in whichever engine tries
+//    to apply it.
 // Drafts are proposals for the reviewer, not approved wording and not legal
 // advice. Shared gates (rules.court_deadlines, rules.limitation_periods,
 // rules.fee_agreement_terms, rules.trust_accounting) are reused, not redefined.
@@ -15,6 +16,7 @@ import { RULE_GATES } from "@/compliance/gates";
 import { listPacks } from "./packs/registry";
 import { uniqueCopyItems } from "./packs/copy";
 import { FAMILY_RULE_KEYS } from "./packs/family";
+import { PERSONAL_INJURY_RULE_KEYS } from "./packs/personalInjury";
 
 export { RULE_GATES };
 
@@ -24,6 +26,7 @@ export { RULE_GATES };
 export { PORTAL_COPY_GATES, PORTAL_GATE_KEYS } from "@/portal/gates";
 
 const ATTORNEY = ["attorney"] as const;
+const ATTORNEY_AND_CPA = ["attorney", "cpa"] as const;
 
 /** Texas family-law rule gates (c103). Values never live in code; these gate their use. */
 export const FAMILY_RULE_GATES = {
@@ -83,6 +86,38 @@ export const FAMILY_RULE_GATES = {
   }),
 } as const;
 
+/**
+ * Texas personal-injury rule gates (c105). Values never live in code; these
+ * gate their use. The limitations period (rules.limitation_periods) and the
+ * contingency-fee terms (rules.fee_agreement_terms) reuse the SHARED gates
+ * already defined in src/compliance/gates.ts — both already list c105 among
+ * their cardIds — rather than being redefined here. Only the lien-resolution
+ * rule and the starter-template library are genuinely new to this pack.
+ */
+export const PERSONAL_INJURY_RULE_GATES = {
+  packContent: defineGate({
+    key: PERSONAL_INJURY_RULE_KEYS.packContent,
+    cardIds: ["c105"],
+    reviewers: [...ATTORNEY_AND_CPA],
+    description:
+      "Personal Injury pack as a whole (matter types, questions, party roles, checklists, stages, task lists), including its settlement-statement and lien-resolution content, reviewed by a Texas personal-injury attorney and a CPA",
+  }),
+  starterTemplates: defineGate({
+    key: PERSONAL_INJURY_RULE_KEYS.starterTemplates,
+    cardIds: ["c105", "c39"],
+    reviewers: [...ATTORNEY],
+    description:
+      "Personal Injury starter templates (contingency-fee engagement agreement, medical-records authorization, demand letter, written settlement statement, petitions): content and licensing",
+  }),
+  lienResolutionBeforeDisbursement: defineGate({
+    key: PERSONAL_INJURY_RULE_KEYS.lienResolutionBeforeDisbursement,
+    cardIds: ["c105", "c76", "c78"],
+    reviewers: [...ATTORNEY_AND_CPA],
+    description:
+      "Process for identifying and resolving hospital, health-insurer and Medicare liens (including Medicare's conditional-payment reimbursement right) before any personal-injury settlement funds are disbursed from trust",
+  }),
+} as const;
+
 /** One attorney copy gate per client-facing sentence in every registered pack. */
 function definePackCopyGates(): Gate[] {
   const out: Gate[] = [];
@@ -106,6 +141,7 @@ export const PACK_COPY_GATES: readonly Gate[] = definePackCopyGates();
 
 export const ALL_ENGINES_GATE_KEYS: readonly string[] = [
   ...Object.values(FAMILY_RULE_GATES).map((g) => g.key),
+  ...Object.values(PERSONAL_INJURY_RULE_GATES).map((g) => g.key),
   ...PACK_COPY_GATES.map((g) => g.key),
 ];
 
