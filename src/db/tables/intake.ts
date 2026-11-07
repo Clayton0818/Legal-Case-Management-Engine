@@ -249,7 +249,13 @@ export const intakeMessages = pgTable("intake_messages", {
   check("intake_messages_status_check", sql`${t.deliveryStatus} in ('received','shown','held','sent','failed','suppressed')`),
 ]);
 
-/** Consents captured at intake (recording, SMS opt-in, disclosures). Shared shape with c72. */
+/**
+ * Consents captured at intake (recording, SMS opt-in, disclosures). Shared
+ * shape with c72 (c72 is the audit-trail/proof-of-consent scope: this row
+ * plus the matching intake_messages row — same text_gate_key — is "what the
+ * person saw, in what language, on what channel, and when they
+ * acknowledged it"; see src/engines/intake/channels/acknowledgments.ts).
+ */
 export const intakeConsents = pgTable("intake_consents", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid("tenant_id").notNull().references(() => firms.id),
@@ -258,6 +264,8 @@ export const intakeConsents = pgTable("intake_consents", {
   /** 'disclosures' | 'recording' | 'sms' | 'ai_disclosure' | 'safe_contact'. */
   consentType: text("consent_type").notNull(),
   channel: text("channel").notNull(),
+  /** c72/c36: the language of the wording actually shown ('en' | 'es'). */
+  language: text("language").notNull().default("en"),
   /** Gate key + draft hash of the wording shown, so the exact text version is traceable. */
   textGateKey: text("text_gate_key"),
   textVersion: text("text_version"),
@@ -268,6 +276,7 @@ export const intakeConsents = pgTable("intake_consents", {
 }, (t) => [
   index("intake_consents_session_idx").on(t.tenantId, t.intakeSessionId, t.consentType),
   check("intake_consents_type_check", sql`${t.consentType} in ('disclosures','recording','sms','ai_disclosure','safe_contact')`),
+  check("intake_consents_language_check", sql`${t.language} in ('en','es')`),
 ]);
 
 export const intakeReferrals = pgTable("intake_referrals", {
@@ -702,4 +711,8 @@ export const intakeReferralDirectory = pgTable("intake_referral_directory", {
 //    there (for a tighter SQL prefilter in findDuplicateCandidates — see
 //    src/engines/intake/identity/service.ts) is a foundation-owned follow-up,
 //    not something this PR requests directly.
+// 6. c72: intake_consents gained `language text not null default 'en'`
+//    (additive, backfills to 'en' for any existing row) plus
+//    intake_consents_language_check ('en','es') — no RLS or GRANT change
+//    beyond the existing intake_consents grants in #2/#3.
 // ---------------------------------------------------------------------------
