@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryApprovalSource, hasGate, isPlaceholder, legalCopy, refreshApprovals, resetApprovalStateForTests, setApprovalSource, requireApproval, PendingApprovalError } from "@/compliance/approvals";
 import { PRACTICE_AREA_IDS } from "@/core/practiceAreas";
-import { ALL_ENGINES_GATE_KEYS, FAMILY_RULE_GATES, PACK_COPY_GATES } from "../gates";
+import { ALL_ENGINES_GATE_KEYS, FAMILY_RULE_GATES, IMMIGRATION_RULE_GATES, PACK_COPY_GATES } from "../gates";
 import { packCopyItems, uniqueCopyItems } from "./copy";
 import { FAMILY_LAW_PACK, FAMILY_RULE_KEYS } from "./family";
 import { applicableQuestions, evaluateSignals, missingRequired, renderQuestion } from "./questions";
@@ -21,9 +21,10 @@ describe("registry", () => {
       expect(PRACTICE_AREA_IDS).toContain(id);
       expect(pack!.id).toBe(id);
     }
-    expect(availablePracticeAreaIds()).toEqual(["family"]);
+    expect(availablePracticeAreaIds()).toEqual(Object.keys(PACK_REGISTRY));
+    expect(availablePracticeAreaIds()).toContain("immigration");
+    expect(getPack("immigration")?.id).toBe("immigration");
     expect(getPack("family")).toBe(FAMILY_LAW_PACK);
-    expect(getPack("immigration")).toBeNull();
     expect(getPack("nope")).toBeNull();
   });
 
@@ -159,12 +160,14 @@ describe("Family Law pack content (c103)", () => {
 describe("gates", () => {
   beforeEach(() => resetApprovalStateForTests());
 
-  it("defines one attorney copy gate per distinct client sentence, and the family rule gates", () => {
-    expect(PACK_COPY_GATES.length).toBe(uniqueCopyItems(FAMILY_LAW_PACK).length);
-    expect(packCopyItems(FAMILY_LAW_PACK).length).toBeGreaterThan(PACK_COPY_GATES.length); // shared stage labels
-    for (const g of [...PACK_COPY_GATES, ...Object.values(FAMILY_RULE_GATES)]) expect(g.reviewers).toEqual(["attorney"]);
+  it("defines one attorney copy gate per distinct client sentence in every pack, and each pack's rule gates", () => {
+    // One gate per distinct client sentence across ALL registered packs (keys are namespaced per pack, so they never collide).
+    expect(PACK_COPY_GATES.length).toBe(listPacks().reduce((n, p) => n + uniqueCopyItems(p).length, 0));
+    expect(packCopyItems(FAMILY_LAW_PACK).length).toBeGreaterThan(uniqueCopyItems(FAMILY_LAW_PACK).length); // shared stage labels
+    for (const p of listPacks()) expect(packCopyItems(p).length).toBeGreaterThanOrEqual(uniqueCopyItems(p).length);
+    for (const g of [...PACK_COPY_GATES, ...Object.values(FAMILY_RULE_GATES), ...Object.values(IMMIGRATION_RULE_GATES)]) expect(g.reviewers).toEqual(["attorney"]);
     expect(new Set(ALL_ENGINES_GATE_KEYS).size).toBe(ALL_ENGINES_GATE_KEYS.length);
-    for (const k of ALL_ENGINES_GATE_KEYS) expect(k).toMatch(/^(copy|rules)\.all-engines\.family\./);
+    for (const k of ALL_ENGINES_GATE_KEYS) expect(k).toMatch(/^(copy|rules)\.all-engines\.(family|immigration)\./);
   });
 
   it("client wording is a visible placeholder until an attorney approves the draft", async () => {
