@@ -6,13 +6,14 @@ import { hashDraft } from "@/compliance/approvals";
 import { PRACTICE_AREAS, type PracticeAreaId } from "@/core/practiceAreas";
 import { FAMILY_LAW_PACK } from "./family";
 import { IMMIGRATION_PACK } from "./immigration";
+import { PERSONAL_INJURY_PACK } from "./personalInjury";
 import type { PracticeAreaPack } from "./types";
 import { stableStringify } from "./validate";
 
 export const PACK_REGISTRY: Readonly<Partial<Record<PracticeAreaId, PracticeAreaPack>>> = Object.freeze({
   family: FAMILY_LAW_PACK,
   immigration: IMMIGRATION_PACK,      // c104
-  // personal_injury: PERSONAL_INJURY_PACK, // c105
+  personal_injury: PERSONAL_INJURY_PACK, // c105
 });
 
 export function getPack(id: string): PracticeAreaPack | null {
