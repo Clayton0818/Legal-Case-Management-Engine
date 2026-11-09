@@ -1,11 +1,12 @@
-// Approval gates owned by the All-engines engine (c99, c102, c103).
+// Approval gates owned by the All-engines engine (c99, c102, c103, c104).
 //
 // Nothing here is approved. Until a reviewer's sign-off is recorded
 // (`npm run compliance -- approve …`):
 //  - every client-facing sentence of a practice-area pack renders as a visible
 //    "[PENDING ATTORNEY REVIEW …]" placeholder via legalCopy();
-//  - every Texas family-law rule reference blocks (requireApproval throws
-//    PendingApprovalError) in whichever engine tries to apply it.
+//  - every Texas family-law rule reference and every Immigration rule
+//    reference blocks (requireApproval throws PendingApprovalError) in
+//    whichever engine tries to apply it.
 // Drafts are proposals for the reviewer, not approved wording and not legal
 // advice. Shared gates (rules.court_deadlines, rules.limitation_periods,
 // rules.fee_agreement_terms, rules.trust_accounting) are reused, not redefined.
@@ -15,6 +16,7 @@ import { RULE_GATES } from "@/compliance/gates";
 import { listPacks } from "./packs/registry";
 import { uniqueCopyItems } from "./packs/copy";
 import { FAMILY_RULE_KEYS } from "./packs/family";
+import { IMMIGRATION_RULE_KEYS } from "./packs/immigration";
 
 export { RULE_GATES };
 
@@ -83,6 +85,64 @@ export const FAMILY_RULE_GATES = {
   }),
 } as const;
 
+/**
+ * Immigration rule gates (c104). Federal law (8 CFR, EOIR); values never
+ * live in code. Several of these exist specifically because unlicensed
+ * ("notario") immigration advice is a documented source of real harm and
+ * Texas has its own rules against it — see
+ * docs/product/features/all-engines/c104-immigration-pack.md.
+ */
+export const IMMIGRATION_RULE_GATES = {
+  packContent: defineGate({
+    key: IMMIGRATION_RULE_KEYS.packContent,
+    cardIds: ["c104"],
+    reviewers: [...ATTORNEY],
+    description: "Immigration pack as a whole (matter types, questions, party roles, checklists, stages, task lists) reviewed by a licensed immigration attorney",
+  }),
+  starterTemplates: defineGate({
+    key: IMMIGRATION_RULE_KEYS.starterTemplates,
+    cardIds: ["c104", "c85", "c39"],
+    reviewers: [...ATTORNEY],
+    description: "Immigration starter templates (USCIS/EOIR forms, G-28/EOIR-28, supporting evidence index): content and licensing",
+  }),
+  formAndTrackEligibility: defineGate({
+    key: IMMIGRATION_RULE_KEYS.formAndTrackEligibility,
+    cardIds: ["c104"],
+    reviewers: [...ATTORNEY],
+    description: "Which immigration forms or process track may fit a case — a lawyer-only prompt; the product never tells a client whether they qualify or which form to file (notario/UPL risk)",
+  }),
+  uscisNoticeDeadlines: defineGate({
+    key: IMMIGRATION_RULE_KEYS.uscisNoticeDeadlines,
+    cardIds: ["c104", "c91"],
+    reviewers: [...ATTORNEY],
+    description: "USCIS Request for Evidence, biometrics and interview response/appearance timing (lawyer tool only)",
+  }),
+  eoirHearingCalendar: defineGate({
+    key: IMMIGRATION_RULE_KEYS.eoirHearingCalendar,
+    cardIds: ["c104", "c91", "c66"],
+    reviewers: [...ATTORNEY],
+    description: "Immigration court (EOIR) master calendar and merits hearing timing used to propose matter-calendar entries",
+  }),
+  naturalizationEligibilityTiming: defineGate({
+    key: IMMIGRATION_RULE_KEYS.naturalizationEligibilityTiming,
+    cardIds: ["c104"],
+    reviewers: [...ATTORNEY],
+    description: "Continuous residence, physical presence and other naturalization timing eligibility rules (lawyer worksheet only)",
+  }),
+  removalDefenseReliefEligibility: defineGate({
+    key: IMMIGRATION_RULE_KEYS.removalDefenseReliefEligibility,
+    cardIds: ["c104"],
+    reviewers: [...ATTORNEY],
+    description: "Available forms of relief from removal and their eligibility screening questions (prompts for the lawyer; the product never decides)",
+  }),
+  filingFeeAndWaiverSchedule: defineGate({
+    key: IMMIGRATION_RULE_KEYS.filingFeeAndWaiverSchedule,
+    cardIds: ["c104", "c52"],
+    reviewers: [...ATTORNEY],
+    description: "USCIS/EOIR filing-fee schedule and fee-waiver eligibility criteria",
+  }),
+} as const;
+
 /** One attorney copy gate per client-facing sentence in every registered pack. */
 function definePackCopyGates(): Gate[] {
   const out: Gate[] = [];
@@ -106,6 +166,7 @@ export const PACK_COPY_GATES: readonly Gate[] = definePackCopyGates();
 
 export const ALL_ENGINES_GATE_KEYS: readonly string[] = [
   ...Object.values(FAMILY_RULE_GATES).map((g) => g.key),
+  ...Object.values(IMMIGRATION_RULE_GATES).map((g) => g.key),
   ...PACK_COPY_GATES.map((g) => g.key),
 ];
 
