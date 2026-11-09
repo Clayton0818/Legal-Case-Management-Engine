@@ -27,12 +27,15 @@
   }
 }
 
-/* A soft, restrained color field behind the glass panels -- not a loud
-   gradient wash, just enough for the frosted surfaces below to catch.
-   Applied once to the admin shell (src/app/admin/layout.tsx); everything
-   inside it sits on top. */
+/* The calm light field behind every page (founder direction 2026-11-09):
+   a near-white canvas with two very soft pastel washes -- warm blush top
+   left, cool lavender top right -- and a faint brand-tinted haze lower
+   down. Applied to each app shell (admin, portal, chat, demo, landing);
+   everything inside sits on top. */
 .glass-bg {
   position: relative;
+  isolation: isolate;
+  background-color: #FBFBFC;
 }
 .glass-bg::before {
   content: "";
@@ -41,10 +44,43 @@
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(640px 420px at 12% 6%, color-mix(in srgb, var(--brand, #5E5CE6) 16%, transparent), transparent 60%),
-    radial-gradient(640px 460px at 88% 2%, color-mix(in srgb, var(--brand, #5E5CE6) 10%, transparent), transparent 60%),
-    radial-gradient(900px 500px at 50% 60%, rgba(170, 210, 255, .10), transparent 65%);
-  filter: blur(2px);
+    radial-gradient(520px 340px at 14% -2%, rgba(255, 196, 196, .32), transparent 70%),
+    radial-gradient(560px 360px at 88% 0%, color-mix(in srgb, var(--brand, #5E5CE6) 14%, transparent), transparent 70%),
+    radial-gradient(900px 420px at 50% 62%, rgba(214, 220, 255, .22), transparent 70%);
+  filter: blur(8px);
+}
+
+/* Earlier dark themes used translucent WHITE hairlines and fills
+   (`border-white/10`, `bg-white/5`) to separate things on a dark surface.
+   On the light shell those would vanish, so they become the equivalent
+   translucent BLACK ones. */
+.border-white\/10, .border-white\/5 { border-color: rgba(0, 0, 0, .07); }
+.bg-white\/5 { background-color: rgba(0, 0, 0, .03); }
+.hover\:bg-white\/5:hover { background-color: rgba(0, 0, 0, .04); }
+
+/* Top navigation link: quiet gray, dark when hovered, and a thin
+   underline under the current section (as in the approved mockup). */
+.nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 .25rem;
+  font-size: .875rem;
+  color: #6E6E73;
+  transition: color .15s ease;
+}
+.nav-link:hover { color: #1D1D1F; }
+.nav-link[aria-current="page"] { color: #1D1D1F; font-weight: 500; }
+.nav-link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: .25rem;
+  right: .25rem;
+  bottom: .55rem;
+  height: 1.5px;
+  border-radius: 1px;
+  background: #1D1D1F;
 }
 
 /* Inner pages (the staff console content area carries `.lux`). Older pages
@@ -74,18 +110,18 @@
 /* Cards and table wrappers: frosted glass, flat at rest, a restrained
    tilt-toward-the-viewer + lift only on hover (not a permanent lean). */
 .lux .border.bg-white:is(.rounded, .rounded-md, .rounded-lg, .rounded-xl) {
-  background-color: rgba(255, 255, 255, .55);
+  background-color: rgba(255, 255, 255, .86);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-radius: 1.125rem;
-  border-color: rgba(0, 0, 0, .06);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 20px 36px -22px rgba(0, 0, 0, .14);
+  border-radius: 1.25rem;
+  border-color: rgba(0, 0, 0, .05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .03), 0 18px 40px -24px rgba(30, 30, 60, .16);
   transform: perspective(1600px) rotateX(0deg) rotateY(0deg) translateZ(0);
   transform-style: preserve-3d;
   transition: transform .35s cubic-bezier(.2, .8, .2, 1), box-shadow .35s ease, background-color .25s ease;
 }
 .lux .border.bg-white:is(.rounded, .rounded-md, .rounded-lg, .rounded-xl):hover {
-  background-color: rgba(255, 255, 255, .72);
+  background-color: rgba(255, 255, 255, .95);
   transform: perspective(1600px) rotateX(1.5deg) rotateY(-1.5deg) translateZ(8px);
   box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 32px 46px -20px rgba(0, 0, 0, .18);
 }
@@ -129,17 +165,17 @@
    the `.lux` utility-matching rules above. Same values as the approved
    GlassMinimal3D mockup. */
 .glass-card {
-  background: rgba(255, 255, 255, .48);
+  background: rgba(255, 255, 255, .86);
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
-  border: 1px solid rgba(255, 255, 255, .7);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 20px 36px -22px rgba(0, 0, 0, .14);
+  border: 1px solid rgba(0, 0, 0, .04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .03), 0 18px 40px -24px rgba(30, 30, 60, .16);
   transform: perspective(1600px) rotateX(0deg) rotateY(0deg) translateZ(0);
   transform-style: preserve-3d;
   transition: transform .35s cubic-bezier(.2, .8, .2, 1), box-shadow .35s ease, background .25s ease;
 }
 .glass-card:hover {
-  background: rgba(255, 255, 255, .64);
+  background: rgba(255, 255, 255, .96);
   transform: perspective(1600px) rotateX(3deg) rotateY(-3deg) translateZ(18px);
   box-shadow: 0 1px 1px rgba(0, 0, 0, .02), 0 38px 54px -20px rgba(0, 0, 0, .2);
 }

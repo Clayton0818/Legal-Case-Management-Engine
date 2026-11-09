@@ -5,12 +5,12 @@
 // wired up. `middleware.ts`'s auth stub currently tags every request as
 // unauthenticated -- do not treat this layout as access-controlled yet.
 //
-// GlassMinimal3D theme (direction 7, board-approved 2026-11-03): a floating
-// frosted sidebar on desktop, a pill tab row on tablet, and a floating
-// bottom bar on phones (see AdminNav), unchanged in shape from the prior
-// theme -- only the surfaces, color and (via `.lux`/`.glass-card` in
-// globals.css) the inner cards changed. The content area still carries
-// `.lux` so older inner pages pick up the new finish without edits.
+// Calm light shell (founder direction 2026-11-09, refining GlassMinimal3D):
+// a quiet translucent top bar with the product name and plain text links on
+// tablet/desktop, a floating light bar at the bottom on phones (see
+// AdminNav), on the soft pastel `.glass-bg` field. No dark sidebar. The
+// content area still carries `.lux` so older inner pages pick up the white
+// card / pill-button finish without edits.
 //
 // `--brand` is set here, inline, from this tenant's firmSettings.brandAccentColor
 // (board card: founder-direct "color code their page" request, 2026-11-03) --
@@ -19,7 +19,7 @@
 // so a failure to resolve a tenant just falls back to the product default
 // set in globals.css, instead of breaking the console.
 import Link from "next/link";
-import { AdminBottomNav, AdminSidebarNav, AdminTabNav } from "./_components/AdminNav";
+import { AdminBottomNav, AdminTopNav } from "./_components/AdminNav";
 
 async function brandAccentColor(): Promise<string | null> {
   try {
@@ -35,48 +35,24 @@ async function brandAccentColor(): Promise<string | null> {
   }
 }
 
-function ShieldMark({ className, stroke }: { className?: string; stroke: string }) {
-  return (
-    <svg className={className} viewBox="0 0 30 34" aria-hidden="true">
-      <path d="M15 1.5l12 4.5v9.5c0 8-5.2 13.6-12 17-6.8-3.4-12-9-12-17V6z" stroke={stroke} strokeWidth="1.4" fill="none" />
-      <path d="M15 9v14M10 13.5h10" stroke={stroke} strokeWidth="1.4" />
-    </svg>
-  );
-}
-
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const brand = await brandAccentColor();
   const style = brand ? ({ "--brand": brand } as React.CSSProperties) : undefined;
   return (
-    <div className="glass-bg min-h-screen bg-slate-50 lg:flex lg:gap-4 lg:p-4" style={style}>
-      {/* Desktop: floating frosted sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col rounded-3xl bg-espresso/90 px-3.5 py-6 backdrop-blur-xl lg:flex">
-        <Link href="/admin" className="mb-6 flex items-center gap-3 px-3">
-          <ShieldMark className="h-7 w-6" stroke="var(--brand, #5E5CE6)" />
-          <span className="flex flex-col">
-            <span className="font-display text-2xl font-normal leading-none tracking-tight text-ivory-bright">Staff Console</span>
-            <span className="mt-1 text-xs text-taupe-dim">Legal Intake</span>
-          </span>
-        </Link>
-        <nav aria-label="Staff console">
-          <AdminSidebarNav />
-        </nav>
-      </aside>
-
-      <div className="min-w-0 flex-1">
-        {/* Tablet + phone header */}
-        <header className="flex items-center justify-between gap-3 px-4 pt-4 md:px-6 lg:hidden">
-          <Link href="/admin" className="flex items-center gap-2.5">
-            <ShieldMark className="h-6 w-5" stroke="var(--brand, #5E5CE6)" />
-            <span className="font-display text-2xl font-normal leading-none tracking-tight text-slate-900">Staff Console</span>
+    <div className="glass-bg min-h-screen" style={style}>
+      <header className="sticky top-0 z-40 border-b border-black/[0.04] bg-white/70 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-6 px-4 md:px-6">
+          <Link href="/admin" className="shrink-0 text-[0.95rem] font-semibold tracking-tight text-slate-900">
+            Practice Engine
           </Link>
-        </header>
-        <nav aria-label="Staff console" className="hidden px-4 pt-4 md:block md:px-6 lg:hidden">
-          <AdminTabNav />
-        </nav>
+          <nav aria-label="Staff console" className="hidden md:block">
+            <AdminTopNav />
+          </nav>
+          <span className="hidden w-[7.5rem] shrink-0 lg:block" aria-hidden="true" />
+        </div>
+      </header>
 
-        <div className="lux mx-auto max-w-6xl px-4 pb-28 pt-6 md:px-6 md:pb-10 lg:px-6 lg:py-4">{children}</div>
-      </div>
+      <div className="lux mx-auto max-w-6xl px-4 pb-28 pt-8 md:px-6 md:pb-12 md:pt-10">{children}</div>
 
       {/* Phone: floating bottom bar */}
       <nav aria-label="Staff console" className="fixed inset-x-3 bottom-3 z-40 md:hidden">

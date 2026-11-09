@@ -16,7 +16,7 @@ const TILES = [
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-espresso-deep text-ivory-text">
+    <main className="glass-bg min-h-screen text-ivory-text">
       <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-20">
         <span className="inline-flex items-center gap-2.5 rounded-full border border-white/10 py-2 pl-3 pr-4 text-sm font-medium text-taupe">
           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-champagne" />

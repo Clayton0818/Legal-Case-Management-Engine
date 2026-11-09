@@ -11,6 +11,15 @@ import { formatDate, formatEnumLabel, stageBadgeClass } from "./_lib/format";
 // and dev-tenant data can change between requests regardless.
 export const dynamic = "force-dynamic";
 
+/** Stages where a person at the firm has to act next (same grouping as the "review" pill in _lib/format.ts). */
+const ATTENTION_STAGES = new Set(["consult_completed_manual_follow_up", "pending_review"]);
+
+function initials(name: string | null): string {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "")).toUpperCase() || "—";
+}
+
 export default async function AdminHome() {
   const tenantId = getDevTenantId();
   // withTenant (and, transitively, src/tenancy/db.ts) is imported lazily,
@@ -23,93 +32,72 @@ export default async function AdminHome() {
   const { withTenant } = await import("@/tenancy/withTenant");
   const matterRows = await withTenant(tenantId, (tx) => listMattersForTenant(tx, tenantId));
 
+  const needsAttention = matterRows.filter((m) => ATTENTION_STAGES.has(m.stage)).length;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-slate-600">Case management</p>
-          <h1 className="font-display text-5xl leading-none tracking-tight text-slate-900 md:text-6xl">Matters</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            {matterRows.length} matter{matterRows.length === 1 ? "" : "s"} for this firm.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-12">
+      {/* Hero (calm light shell, founder-approved mockup 2026-11-09) */}
+      <section className="mx-auto max-w-2xl pt-4 text-center md:pt-10">
+        <h1 className="!text-[2.6rem] !font-normal !leading-[1.08] !tracking-[-0.025em] md:!text-[3.4rem]">
+          A calmer way
+          <br />
+          to run the practice.
+        </h1>
+        <p className="mt-4 text-[0.95rem] text-slate-500">
+          {matterRows.length === 0
+            ? "No matters yet."
+            : needsAttention > 0
+              ? `${needsAttention} matter${needsAttention === 1 ? " needs" : "s need"} attention today.`
+              : `${matterRows.length} matter${matterRows.length === 1 ? "" : "s"}, nothing waiting on you.`}
+        </p>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
           <Link
-            href="/demo"
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-champagne-ink shadow-sm hover:bg-slate-100"
+            href="/admin/intake"
+            className="inline-flex min-h-[44px] items-center rounded-full border border-black/[0.06] bg-white px-5 text-sm font-medium text-slate-900 shadow-sm transition hover:-translate-y-px hover:shadow-md"
           >
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-champagne" />
-            Demo (fictional data) →
+            + New Matter
           </Link>
-          <Link
-            href="/admin/insights"
-            className="inline-flex min-h-[44px] items-center rounded-full bg-espresso px-5 text-sm font-semibold text-ivory-text hover:bg-espresso-panel"
-          >
+          <Link href="/admin/insights" className="inline-flex min-h-[44px] items-center rounded-full px-4 text-sm text-slate-500 transition hover:text-slate-900">
             View insights →
           </Link>
+          <Link href="/demo" className="inline-flex min-h-[44px] items-center rounded-full px-4 text-sm text-slate-500 transition hover:text-slate-900">
+            Demo (fictional data) →
+          </Link>
         </div>
-      </div>
+      </section>
 
-      {matterRows.length === 0 ? (
-        <div className="rounded-3xl bg-white p-8 text-sm text-slate-600 shadow-sm">No matters yet.</div>
-      ) : (
-        <>
-          {/* Desktop: table */}
-          <div className="hidden overflow-x-auto rounded-3xl bg-white p-2 shadow-sm lg:block">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr>
-                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-600">Party</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-600">Practice area</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-600">Stage</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-600">Opened</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-600">Assigned to</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matterRows.map((matter) => (
-                  <tr key={matter.id} className="border-t border-slate-100 hover:bg-slate-50">
-                    <td className="whitespace-nowrap px-5 py-4">
-                      <Link href={`/admin/matters/${matter.id}`} className="font-semibold text-slate-900 hover:underline">
-                        {matter.partyName ?? "Unknown party"}
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-4 text-slate-700">{matter.practiceArea ?? "—"}</td>
-                    <td className="whitespace-nowrap px-5 py-4">
-                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${stageBadgeClass(matter.stage)}`}>
-                        {formatEnumLabel(matter.stage)}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-4 text-slate-700">{formatDate(matter.openedAt)}</td>
-                    <td className="whitespace-nowrap px-5 py-4 text-slate-700">{matter.assignedUserName ?? "Unassigned"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Tablet + phone: cards */}
-          <ul className="space-y-2.5 lg:hidden">
-            {matterRows.map((matter) => (
-              <li key={matter.id}>
-                <Link
-                  href={`/admin/matters/${matter.id}`}
-                  className="flex flex-col gap-1.5 rounded-2xl bg-white p-4 shadow-sm transition hover:bg-slate-100 md:flex-row md:items-center md:justify-between md:gap-4 md:px-5"
-                >
-                  <span className="flex min-w-0 flex-col gap-1">
-                    <span className="truncate text-base font-semibold text-slate-900">{matter.partyName ?? "Unknown party"}</span>
-                    <span className="text-sm text-slate-600">
-                      {matter.practiceArea ?? "—"} · opened {formatDate(matter.openedAt)} · {matter.assignedUserName ?? "Unassigned"}
+      {matterRows.length === 0 ? null : (
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {matterRows.map((matter) => (
+            <li key={matter.id}>
+              <Link
+                href={`/admin/matters/${matter.id}`}
+                className="glass-card flex h-full flex-col rounded-[1.25rem] p-5 focus-visible:outline-offset-4"
+              >
+                <span className="truncate text-[0.95rem] font-semibold text-slate-900">{matter.partyName ?? "Unknown party"}</span>
+                <span className="mt-0.5 truncate text-[0.8rem] text-slate-500">{matter.practiceArea ? formatEnumLabel(matter.practiceArea) : "Practice area not set"}</span>
+                <span className={`mt-3 inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-[0.7rem] font-medium ${stageBadgeClass(matter.stage)}`}>
+                  {formatEnumLabel(matter.stage)}
+                </span>
+                <span className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3.5 text-[0.8rem]">
+                  <span className="flex min-w-0 items-center gap-2 text-slate-700">
+                    <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[0.6rem] font-semibold text-slate-600">
+                      {initials(matter.assignedUserName)}
                     </span>
+                    <span className="truncate">{matter.assignedUserName ?? "Unassigned"}</span>
                   </span>
-                  <span className={`inline-flex w-fit shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold ${stageBadgeClass(matter.stage)}`}>
-                    {formatEnumLabel(matter.stage)}
+                  <span className="flex shrink-0 items-center gap-1 text-slate-400">
+                    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.4">
+                      <rect x="2" y="3" width="12" height="11" rx="2" />
+                      <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" />
+                    </svg>
+                    {formatDate(matter.openedAt)}
                   </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
