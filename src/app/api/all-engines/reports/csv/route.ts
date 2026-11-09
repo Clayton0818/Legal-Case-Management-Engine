@@ -17,22 +17,10 @@ import {
   type ReportFilters,
 } from "@/engines/all-engines/reports/queries";
 import { toCsv } from "@/engines/all-engines/reports/csvExport";
+import { isReportSection, REPORT_SECTIONS, type ReportSection } from "@/engines/all-engines/reports/sections";
 import type { TenantTx } from "@/tenancy/withTenant";
 
 export const dynamic = "force-dynamic";
-
-export const REPORT_SECTIONS = [
-  "matters-by-stage",
-  "matters-by-practice-area",
-  "overdue-tasks",
-  "deadlines-upcoming",
-  "conflict-checks-pending",
-] as const;
-export type ReportSection = (typeof REPORT_SECTIONS)[number];
-
-export function isReportSection(value: string | null): value is ReportSection {
-  return value !== null && (REPORT_SECTIONS as readonly string[]).includes(value);
-}
 
 async function buildSectionCsv(tx: TenantTx, tenantId: string, section: ReportSection, filters: ReportFilters): Promise<string> {
   switch (section) {
