@@ -45,6 +45,7 @@ import {
   type LockReason,
   type ReplyKind,
 } from "./records";
+import { buildAcknowledgmentRecord, summarizeDisclosureProof, type ConsentType, type DisclosureProofEntry } from "./acknowledgments";
 
 export interface InboundInput {
   tenantId: string;
@@ -426,17 +427,26 @@ export async function acknowledgeDisclosures(
   }
   const gateKey = copyKeyFor(CHANNEL_COPY.disclosure, session.language);
   const status = gateStatus(gateKey);
+  const record = buildAcknowledgmentRecord({
+    consentType: "disclosures",
+    channel: state.channel as IntakeChannel,
+    language: session.language,
+    given: true,
+    gateStatus: status,
+    now,
+  });
   await tx.insert(intakeConsents).values({
     tenantId: input.tenantId,
     intakeSessionId: session.id,
     partyId: state.partyId,
-    consentType: "disclosures",
-    channel: state.channel,
-    textGateKey: gateKey,
-    textVersion: status.approved ? status.gate.draftHash ?? "approved" : "pending_review",
-    given: true,
+    consentType: record.consentType,
+    channel: record.channel,
+    language: record.language,
+    textGateKey: record.textGateKey,
+    textVersion: record.textVersion,
+    given: record.given,
     recordedByUserId: input.staffUserId ?? null,
-    givenAt: now,
+    givenAt: record.givenAt,
   });
   await updateState(tx, input.tenantId, session.id, { disclosuresAcknowledgedAt: now });
   await recordIntakeEvent(tx, {
@@ -456,17 +466,26 @@ export async function recordConsent(
   const now = input.now ?? new Date();
   const { session, state } = await getSessionBundle(tx, input.tenantId, input.intakeSessionId);
   const gateKey = input.consentType === "sms" ? copyKeyFor(CHANNEL_COPY.smsFirstReply, session.language) : copyKeyFor(CHANNEL_COPY.recordingPrompt, session.language);
+  const record = buildAcknowledgmentRecord({
+    consentType: input.consentType,
+    channel: state.channel as IntakeChannel,
+    language: session.language,
+    given: input.given,
+    gateStatus: gateStatus(gateKey),
+    now,
+  });
   await tx.insert(intakeConsents).values({
     tenantId: input.tenantId,
     intakeSessionId: session.id,
     partyId: state.partyId,
-    consentType: input.consentType,
-    channel: state.channel,
-    textGateKey: gateKey,
-    textVersion: gateStatus(gateKey).approved ? gateStatus(gateKey).gate.draftHash ?? "approved" : "pending_review",
-    given: input.given,
+    consentType: record.consentType,
+    channel: record.channel,
+    language: record.language,
+    textGateKey: record.textGateKey,
+    textVersion: record.textVersion,
+    given: record.given,
     recordedByUserId: input.staffUserId ?? null,
-    givenAt: now,
+    givenAt: record.givenAt,
   });
   if (input.consentType === "recording") {
     await updateState(tx, input.tenantId, session.id, { recordingState: input.given ? "consented" : "declined" });
@@ -671,6 +690,36 @@ export async function listSessionMessages(tx: TenantTx, tenantId: string, intake
     .from(intakeMessages)
     .where(and(eq(intakeMessages.tenantId, tenantId), eq(intakeMessages.intakeSessionId, intakeSessionId)))
     .orderBy(asc(intakeMessages.createdAt));
+}
+
+/**
+ * Proof-of-disclosure report for one session: every disclosure/consent
+ * acknowledgment, joined with the literal outbound text that produced it,
+ * oldest first — "the firm can prove what the person saw" (c72). Staff /
+ * compliance view; internal only (never sent to the client).
+ */
+export async function getDisclosureProof(tx: TenantTx, tenantId: string, intakeSessionId: string): Promise<DisclosureProofEntry[]> {
+  const consents = await tx
+    .select({
+      consentType: intakeConsents.consentType,
+      channel: intakeConsents.channel,
+      language: intakeConsents.language,
+      textGateKey: intakeConsents.textGateKey,
+      textVersion: intakeConsents.textVersion,
+      given: intakeConsents.given,
+      givenAt: intakeConsents.givenAt,
+      withdrawnAt: intakeConsents.withdrawnAt,
+    })
+    .from(intakeConsents)
+    .where(and(eq(intakeConsents.tenantId, tenantId), eq(intakeConsents.intakeSessionId, intakeSessionId)));
+  const messages = await tx
+    .select({ channel: intakeMessages.channel, copyGateKey: intakeMessages.copyGateKey, body: intakeMessages.body, createdAt: intakeMessages.createdAt })
+    .from(intakeMessages)
+    .where(and(eq(intakeMessages.tenantId, tenantId), eq(intakeMessages.intakeSessionId, intakeSessionId), eq(intakeMessages.direction, "outbound")));
+  return summarizeDisclosureProof(
+    consents.map((c) => ({ ...c, consentType: c.consentType as ConsentType })),
+    messages
+  );
 }
 
 /** c71 suggestion: possible existing records for this session's contact. Staff confirm; never auto-merged. */
