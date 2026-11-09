@@ -389,6 +389,27 @@ export const documentRedactions = pgTable("document_redactions", {
   check("document_redactions_rejected_check", sql`${t.status} <> 'rejected' or (${t.rejectedAt} is not null and ${t.reason} is not null)`),
 ]);
 
+// MIGRATION NOTE for document_redactions (c88). Kept beside the table rather
+// than in the numbered MIGRATION NOTES at the end of this file so it merges
+// cleanly with c89's notes 12/13 there; treat it as the next number.
+//
+// c88 — document_redactions + document_access_log widened:
+//     - document_redactions: RLS + tenant_isolation like every other table
+//       here. app_runtime keeps ordinary UPDATE (status moves suggested ->
+//       confirmed/rejected -> applied in place, same reasoning as note 8);
+//       REVOKE DELETE (a declined or applied redaction pass is a permanent
+//       record of what was reviewed, never removed).
+//     - document_access_log.action's CHECK constraint must be widened to add
+//       'privilege_change' and 'redaction' to the existing five values
+//       (ALTER TABLE document_access_log DROP CONSTRAINT
+//       document_access_log_action_check, then ADD CONSTRAINT with the new
+//       list) — this table already predates this migration, so drizzle-kit
+//       will emit this as an ALTER, not a CREATE; confirm it targets the
+//       existing constraint name. No change to the outcome CHECK: both new
+//       actions are only ever logged as 'allowed' (they are completed
+//       mutations the caller already had permission for, not access
+//       decisions with a possible denial).
+
 // ---------------------------------------------------------------------------
 // Screens mirror (c60) — LOCAL ADAPTER
 // ---------------------------------------------------------------------------
@@ -948,21 +969,4 @@ export const filingServiceRecords = pgTable("filing_service_records", {
 //     DELETE rule is needed from court_filings.documentId /
 //     stampedDocumentId or filing_service_records.proofDocumentId to a
 //     specific version, since `documents` rows are never deleted (note 3).
-//
-// 12. c88 — document_redactions + document_access_log widened:
-//     - document_redactions: RLS + tenant_isolation like every other table
-//       here. app_runtime keeps ordinary UPDATE (status moves suggested ->
-//       confirmed/rejected -> applied in place, same reasoning as note 8);
-//       REVOKE DELETE (a declined or applied redaction pass is a permanent
-//       record of what was reviewed, never removed).
-//     - document_access_log.action's CHECK constraint must be widened to add
-//       'privilege_change' and 'redaction' to the existing five values
-//       (ALTER TABLE document_access_log DROP CONSTRAINT
-//       document_access_log_action_check, then ADD CONSTRAINT with the new
-//       list) — this table already predates this migration, so drizzle-kit
-//       will emit this as an ALTER, not a CREATE; confirm it targets the
-//       existing constraint name. No change to the outcome CHECK: both new
-//       actions are only ever logged as 'allowed' (they are completed
-//       mutations the caller already had permission for, not access
-//       decisions with a possible denial).
 // ---------------------------------------------------------------------------
