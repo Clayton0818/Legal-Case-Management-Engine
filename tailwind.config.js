@@ -15,11 +15,8 @@
 // setting: every indigo/sky/blue-colored link, pill and button site-wide
 // re-tints from one value, with no other code changes.
 //
-// `espresso` / `champagne` / `ivory` / `taupe` keep their names (so the
-// handful of files that reference them directly -- admin/layout.tsx,
-// AdminNav.tsx, ui.tsx -- don't need to change) but now resolve to the new
-// near-black / brand-tinted / near-white / neutral-gray values instead of
-// the old warm espresso-brown and gold.
+// `espresso` / `champagne` / `ivory` / `taupe` keep their names but are
+// re-pointed to the light shell's values -- see the comment on them below.
 const glassGray = {
   50: "#FBFBFC",
   100: "#F2F2F4",
@@ -64,26 +61,42 @@ export default {
         sky: glassBrand,
         blue: glassBrand,
         indigo: glassBrand,
+        // Light "calm" shell (founder direction 2026-11-09: every page,
+        // demo included, uses the light, airy look -- white cards on a soft
+        // pastel field, dark text, one brand accent). These four token
+        // families were the DARK-surface vocabulary of earlier themes
+        // (espresso = dark surfaces, ivory = text on them, taupe = muted
+        // text on them, champagne = accent). Exactly like the slate remap
+        // above, they are re-pointed rather than rewritten page by page, so
+        // every client-facing page that used them (portal, chat, demo,
+        // landing) flips to light without edits:
+        //   espresso -> white / near-white surfaces
+        //   ivory    -> near-black text
+        //   taupe    -> neutral grays for secondary text
+        //   champagne -> the tenant brand accent (DEFAULT/ink are text-safe
+        //               on white; `light` is a deeper hover shade)
+        // `text-espresso-deep` was dark text on a gold button; it now
+        // resolves to near-white, which is exactly right on a brand button.
         espresso: {
-          DEFAULT: "#1D1D1F",
-          deep: "#161617",
-          panel: "#232325",
-          bubble: "#2E2E31",
+          DEFAULT: "#FFFFFF",
+          deep: "#FBFBFC",
+          panel: "#FFFFFF",
+          bubble: "#F2F2F5",
         },
         champagne: {
           DEFAULT: "var(--brand, #5E5CE6)",
-          light: "color-mix(in srgb, var(--brand, #5E5CE6) 55%, white)",
+          light: "color-mix(in srgb, var(--brand, #5E5CE6) 82%, black)",
           ink: "color-mix(in srgb, var(--brand, #5E5CE6) 72%, black)",
         },
         ivory: {
-          DEFAULT: "#FBFBFC",
-          bright: "#FFFFFF",
-          text: "#F2F2F4",
+          DEFAULT: "#1D1D1F",
+          bright: "#121214",
+          text: "#1D1D1F",
         },
         taupe: {
-          DEFAULT: "#AEAEB4",
-          dim: "#9A9A9E",
-          faint: "#8A8A8E",
+          DEFAULT: "#6E6E73",
+          dim: "#86868B",
+          faint: "#98989D",
         },
       },
       fontFamily: {

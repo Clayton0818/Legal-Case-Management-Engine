@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function DemoLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="glass-bg min-h-screen">
       <div
         role="status"
         aria-live="polite"
@@ -18,7 +18,7 @@ export default function DemoLayout({ children }: { children: React.ReactNode }) 
       >
         {DEMO_BANNER}
       </div>
-      <header className="bg-espresso-deep">
+      <header className="border-b border-black/[0.04] bg-white/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl flex-wrap items-end justify-between gap-4 px-4 py-8 md:px-6 md:py-10">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 py-1.5 pl-2.5 pr-3.5 text-xs font-medium text-taupe">

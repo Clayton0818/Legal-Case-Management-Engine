@@ -1,5 +1,5 @@
-// Shared building blocks for the inner staff pages (GlassMinimal3D, board-
-// approved 2026-11-03). Styling only -- no data or behaviour lives here. Red /
+// Shared building blocks for the inner staff pages (calm light shell,
+// founder direction 2026-11-09; GlassMinimal3D before it). Styling only -- no data or behaviour lives here. Red /
 // amber / green stay semantic (danger / warning / success) so alerts keep
 // meaning; "brand" tracks the tenant's own accent color (see
 // src/app/admin/layout.tsx and the Branding settings page).
@@ -12,7 +12,7 @@ const PILL_TONE: Record<Tone, { box: string; dot: string }> = {
   warning: { box: "bg-[#F7EEDC] text-[#6B4614]", dot: "bg-[#C08A3E]" },
   danger: { box: "bg-red-50 text-red-800", dot: "bg-red-600" },
   success: { box: "bg-[#E5F1E8] text-[#23502F]", dot: "bg-[#3F8A57]" },
-  brand: { box: "bg-espresso text-champagne-light", dot: "bg-champagne" },
+  brand: { box: "bg-indigo-50 text-indigo-700", dot: "bg-indigo-500" },
 };
 
 const NOTICE_TONE: Record<Exclude<Tone, "brand" | "neutral">, string> = {
@@ -55,8 +55,9 @@ export function SectionTitle({ children, hint }: { children: React.ReactNode; hi
 }
 
 export function Card({ children, className = "", dark = false }: { children: React.ReactNode; className?: string; dark?: boolean }) {
-  const surface = dark ? "bg-espresso/90 text-ivory-text backdrop-blur-xl" : "glass-card";
-  return <div className={`rounded-[1.375rem] ${surface} ${className}`}>{children}</div>;
+  // `dark` is kept for callers but renders as a light card too: the calm shell has no dark panels.
+  const surface = dark ? "glass-card text-slate-900" : "glass-card";
+  return <div className={`rounded-[1.25rem] ${surface} ${className}`}>{children}</div>;
 }
 
 export function Notice({ tone = "warning", children }: { tone?: keyof typeof NOTICE_TONE; children: React.ReactNode }) {
