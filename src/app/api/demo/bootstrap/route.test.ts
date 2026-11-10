@@ -37,16 +37,22 @@ vi.mock("@/tenancy/withTenant", () => ({ withTenant: async (_id: string, fn: (tx
 describe("POST /api/demo/bootstrap", () => {
   const originalEnabled = process.env.DEMO_RESET_ENABLED;
   const originalSecret = process.env.DEMO_BOOTSTRAP_SECRET;
+  // The "next step" message depends on DEV_TENANT_ID; the Full pipeline CI job
+  // sets it to current-demo, so clear it here to test the unset case.
+  const originalTenant = process.env.DEV_TENANT_ID;
 
   beforeEach(() => {
     createCalls.length = 0;
     activeDemoTenants = [];
+    delete process.env.DEV_TENANT_ID;
   });
   afterEach(() => {
     if (originalEnabled === undefined) delete process.env.DEMO_RESET_ENABLED;
     else process.env.DEMO_RESET_ENABLED = originalEnabled;
     if (originalSecret === undefined) delete process.env.DEMO_BOOTSTRAP_SECRET;
     else process.env.DEMO_BOOTSTRAP_SECRET = originalSecret;
+    if (originalTenant === undefined) delete process.env.DEV_TENANT_ID;
+    else process.env.DEV_TENANT_ID = originalTenant;
   });
 
   function request(secret: string | null): Request {
