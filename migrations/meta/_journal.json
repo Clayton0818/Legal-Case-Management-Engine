@@ -71,6 +71,13 @@
       "when": 1794192730702,
       "tag": "0009_wave3_documents_intake_import_branding",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794293357832,
+      "tag": "0010_c88_document_redactions",
+      "breakpoints": true
     }
   ]
 }
