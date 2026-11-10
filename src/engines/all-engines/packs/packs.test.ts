@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryApprovalSource, hasGate, isPlaceholder, legalCopy, refreshApprovals, resetApprovalStateForTests, setApprovalSource, requireApproval, PendingApprovalError } from "@/compliance/approvals";
 import { PRACTICE_AREA_IDS } from "@/core/practiceAreas";
-import { ALL_ENGINES_GATE_KEYS, FAMILY_RULE_GATES, IMMIGRATION_RULE_GATES, PACK_COPY_GATES } from "../gates";
+import { ALL_ENGINES_GATE_KEYS, FAMILY_RULE_GATES, IMMIGRATION_RULE_GATES, PERSONAL_INJURY_RULE_GATES, PACK_COPY_GATES } from "../gates";
 import { packCopyItems, uniqueCopyItems } from "./copy";
 import { FAMILY_LAW_PACK, FAMILY_RULE_KEYS } from "./family";
 import { applicableQuestions, evaluateSignals, missingRequired, renderQuestion } from "./questions";
@@ -24,6 +24,8 @@ describe("registry", () => {
     expect(availablePracticeAreaIds()).toEqual(Object.keys(PACK_REGISTRY));
     expect(availablePracticeAreaIds()).toContain("immigration");
     expect(getPack("immigration")?.id).toBe("immigration");
+    expect(availablePracticeAreaIds()).toContain("personal_injury");
+    expect(getPack("personal_injury")?.id).toBe("personal_injury");
     expect(getPack("family")).toBe(FAMILY_LAW_PACK);
     expect(getPack("nope")).toBeNull();
   });
@@ -166,8 +168,10 @@ describe("gates", () => {
     expect(packCopyItems(FAMILY_LAW_PACK).length).toBeGreaterThan(uniqueCopyItems(FAMILY_LAW_PACK).length); // shared stage labels
     for (const p of listPacks()) expect(packCopyItems(p).length).toBeGreaterThanOrEqual(uniqueCopyItems(p).length);
     for (const g of [...PACK_COPY_GATES, ...Object.values(FAMILY_RULE_GATES), ...Object.values(IMMIGRATION_RULE_GATES)]) expect(g.reviewers).toEqual(["attorney"]);
+    // PI rule gates always need an attorney; the settlement-statement/trust flow also needs a CPA (c105 note).
+    for (const g of Object.values(PERSONAL_INJURY_RULE_GATES)) expect(g.reviewers).toContain("attorney");
     expect(new Set(ALL_ENGINES_GATE_KEYS).size).toBe(ALL_ENGINES_GATE_KEYS.length);
-    for (const k of ALL_ENGINES_GATE_KEYS) expect(k).toMatch(/^(copy|rules)\.all-engines\.(family|immigration)\./);
+    for (const k of ALL_ENGINES_GATE_KEYS) expect(k).toMatch(/^(copy|rules)\.all-engines\.(family|immigration|personal_injury)\./);
   });
 
   it("client wording is a visible placeholder until an attorney approves the draft", async () => {
