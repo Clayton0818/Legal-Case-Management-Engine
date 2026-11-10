@@ -7,7 +7,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * c84 — move / rename / tag a file: { title?, folderId?, privilegeTag?,
- * clientVisible?, legalHold?: { on, reason }, originalHeld?, archived? }.
+ * clientVisible?, legalHold?: { on, reason }, originalHeld?, archived?,
+ * reason? }. `reason` is required (c88) whenever the patch lifts a
+ * privileged/work_product/sealed tag or turns clientVisible on.
  * New versions are uploaded through POST /api/document/matters/<id>/documents with groupId.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -20,6 +22,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if ("folderId" in body) patch.folderId = uuidOrNull(body, "folderId");
     const tag = str(body, "privilegeTag");
     if (tag !== null) patch.privilegeTag = tag;
+    const reason = str(body, "reason", { max: 2000 });
+    if (reason !== null) patch.reason = reason;
     const cv = bool(body, "clientVisible");
     if (cv !== undefined) patch.clientVisible = cv;
     const oh = bool(body, "originalHeld");

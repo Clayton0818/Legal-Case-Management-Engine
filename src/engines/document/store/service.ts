@@ -49,7 +49,8 @@ export interface UploadResult {
   warnings: string[];
 }
 
-interface Ctx {
+/** Exported so sibling services (e.g. redaction/service.ts, c88) share the same request context shape. */
+export interface Ctx {
   tenantId: string;
   viewer: StaffViewer;
   access: AccessContext;
@@ -349,7 +350,8 @@ export async function listMatterDocuments(tx: TenantTx, ctx: Ctx, matterId: stri
   return items;
 }
 
-async function loadVersion(tx: TenantTx, tenantId: string, documentId: string) {
+/** Exported for the redaction service (c88), which needs the same version + group + file lookup. */
+export async function loadVersion(tx: TenantTx, tenantId: string, documentId: string) {
   const [row] = await tx
     .select({ d: documents, f: documentVersionFiles, g: documentGroups })
     .from(documents)
@@ -466,6 +468,9 @@ export async function downloadDocument(tx: TenantTx, ctx: Ctx, documentId: strin
 // Changing a file's placement and tags
 // ---------------------------------------------------------------------------
 
+/** Privilege tags that need documents.privileged to even see (core/permissions.ts PRIVILEGED) and documents.approve to lift (c88). */
+const PRIVILEGED_TAGS = new Set(["privileged", "work_product", "sealed"]);
+
 export interface GroupPatch {
   title?: string;
   folderId?: string | null;
@@ -474,13 +479,25 @@ export interface GroupPatch {
   legalHold?: { on: boolean; reason?: string | null };
   originalHeld?: boolean;
   archived?: boolean;
+  /**
+   * Required whenever this patch WEAKENS protection (c88): lifting a
+   * privileged/work_product/sealed tag, or turning clientVisible on. This is
+   * the card's "extra confirmation before being shared outside the firm" —
+   * recorded in the document_access_log 'privilege_change' row alongside
+   * the before/after values.
+   */
+  reason?: string;
 }
 
 /**
  * Move / rename / tag a file. Rules:
  * - documents.write for everything;
- * - making a file client-visible, lifting 'sealed', and setting or releasing a
- *   legal hold need documents.approve (attorney-only, c34);
+ * - making a file client-visible, lifting a privileged/work_product/sealed
+ *   tag, and setting or releasing a legal hold need documents.approve
+ *   (attorney-only, c34);
+ * - either of those two WEAKENING changes also needs a non-empty `reason`
+ *   (c88) and is logged to document_access_log as 'privilege_change', in
+ *   addition to the usual audit() row;
  * - tags apply to the CURRENT version row (older versions keep theirs: history is not rewritten).
  */
 export async function updateDocumentGroup(tx: TenantTx, ctx: Ctx, groupId: string, patch: GroupPatch) {
@@ -502,6 +519,7 @@ export async function updateDocumentGroup(tx: TenantTx, ctx: Ctx, groupId: strin
   const groupSet: Partial<typeof documentGroups.$inferInsert> = {};
   const docSet: Partial<typeof documents.$inferInsert> = {};
   const changes: Record<string, unknown> = {};
+  let weakened = false;
 
   if (patch.title !== undefined) {
     if (!patch.title.trim()) throw new DocumentError("Title cannot be empty.");
@@ -518,11 +536,16 @@ export async function updateDocumentGroup(tx: TenantTx, ctx: Ctx, groupId: strin
   }
   if (patch.privilegeTag !== undefined) {
     if (!isPrivilegeTag(patch.privilegeTag)) throw new DocumentError(`Unknown privilege tag '${patch.privilegeTag}'.`);
-    if (cur.privilegeTag === "sealed" && patch.privilegeTag !== "sealed" && !approve) throw new DocumentError("Only an attorney can lift 'sealed'.", 403);
+    const wasPrivileged = PRIVILEGED_TAGS.has(cur.privilegeTag);
+    const staysPrivileged = PRIVILEGED_TAGS.has(patch.privilegeTag);
+    if (wasPrivileged && !staysPrivileged) {
+      if (!approve) throw new DocumentError(`Only an attorney can lift '${cur.privilegeTag}'.`, 403);
+      weakened = true;
+    }
     const roles = ctx.access.restrictedTags[patch.privilegeTag];
     if (roles && !roles.includes(viewer.role)) throw new DocumentError(`You cannot tag a document '${patch.privilegeTag}'.`, 403);
     docSet.privilegeTag = patch.privilegeTag;
-    changes.privilegeTag = patch.privilegeTag;
+    changes.privilegeTag = { from: cur.privilegeTag, to: patch.privilegeTag };
   }
   if (patch.clientVisible !== undefined) {
     if (patch.clientVisible && !approve) throw new DocumentError("Only an attorney can share a document with the client.", 403);
@@ -530,8 +553,12 @@ export async function updateDocumentGroup(tx: TenantTx, ctx: Ctx, groupId: strin
     if (patch.clientVisible && !(tag === "none" || tag === "confidential")) {
       throw new DocumentError(`A '${tag}' document cannot be shared with the client; change the tag first.`, 409);
     }
+    if (patch.clientVisible && !cur.clientVisible) weakened = true;
     docSet.clientVisible = patch.clientVisible;
-    changes.clientVisible = patch.clientVisible;
+    changes.clientVisible = { from: cur.clientVisible, to: patch.clientVisible };
+  }
+  if (weakened && !patch.reason?.trim()) {
+    throw new DocumentError("A reason is required before lifting a privilege tag or sharing a document with the client.", 422);
   }
   if (patch.legalHold !== undefined) {
     if (!approve) throw new DocumentError("Only an attorney can set or release a legal hold.", 403);
@@ -554,6 +581,20 @@ export async function updateDocumentGroup(tx: TenantTx, ctx: Ctx, groupId: strin
   if (Object.keys(groupSet).length) await tx.update(documentGroups).set({ ...groupSet, updatedAt: now }).where(eq(documentGroups.id, g.id));
   if (Object.keys(docSet).length) await tx.update(documents).set({ ...docSet, updatedAt: now }).where(eq(documents.id, cur.id));
   if (groupSet.title) await tx.update(documentText).set({ title: groupSet.title }).where(eq(documentText.groupId, g.id));
+
+  const reason = patch.reason?.trim() || patch.legalHold?.reason?.trim() || null;
+  if (changes.privilegeTag !== undefined || changes.clientVisible !== undefined) {
+    await logAccess(tx, {
+      tenantId,
+      viewer,
+      action: "privilege_change",
+      outcome: "allowed",
+      documentId: cur.id,
+      groupId: g.id,
+      matterId: g.matterId,
+      detail: { privilegeTag: changes.privilegeTag ?? null, clientVisible: changes.clientVisible ?? null, weakened, reason },
+    });
+  }
   await audit(tx, {
     tenantId,
     engine: ENGINE,
@@ -562,7 +603,7 @@ export async function updateDocumentGroup(tx: TenantTx, ctx: Ctx, groupId: strin
     entityId: g.id,
     matterId: g.matterId,
     actor: actorOf(viewer),
-    reason: patch.legalHold?.reason ?? null,
+    reason,
     payload: { documentId: cur.id, changes },
   });
   return { groupId, changed: true, changes };
