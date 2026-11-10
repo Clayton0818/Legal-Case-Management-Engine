@@ -101,7 +101,12 @@ export function actorOf(viewer: DocumentViewer): Actor {
 // Access log
 // ---------------------------------------------------------------------------
 
-export type LoggedAction = "view" | "download" | "list" | "search" | "version_history";
+/**
+ * 'privilege_change' and 'redaction' (c88) are completed mutations the
+ * caller already had permission for, not access decisions — they are always
+ * logged with outcome 'allowed'.
+ */
+export type LoggedAction = "view" | "download" | "list" | "search" | "version_history" | "privilege_change" | "redaction";
 
 export interface AccessLogInput {
   tenantId: string;
