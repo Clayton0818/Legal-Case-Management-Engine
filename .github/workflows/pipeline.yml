@@ -1,0 +1,109 @@
+name: Full pipeline
+
+# COPY THIS FILE TO .github/workflows/pipeline.yml to switch the job on
+# (the automation that wrote it is not allowed to edit .github/workflows).
+#
+# The whole product, end to end, on a throwaway database built ONLY from
+# migrations/ (no secrets, nothing shared with staging):
+#   1. every migration applies cleanly from scratch
+#   2. schema drift: every table/column the code uses exists after migrating
+#      (the check that would have caught the Nov 2026 demo-seed break)
+#   3. the full test suite INCLUDING the database-backed tests that the
+#      "Typecheck & lint" job skips (no database there)
+#   4. the demo seed drives every engine through its real services; any
+#      failed step fails the job (steps waiting on an approval are fine)
+#   5. a real browser clicks through every link in the demo walkthrough and
+#      saves a screenshot of each page (artifact: walkthrough-screenshots)
+#
+# Runs on every PR and on demand (Actions tab → Full pipeline → Run workflow).
+# Locally: see scripts/ci/README.md.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  full-pipeline:
+    name: Full pipeline (migrations, DB tests, demo seed, walkthrough)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MIGRATIONS_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Test-only role created by scripts/ci/test-db-roles.sql in this job's own database.
+      DATABASE_URL: postgresql://app_runtime:app_runtime_test_only@localhost:5432/postgres
+      DEMO_RESET_ENABLED: "1"
+      DEV_TENANT_ID: current-demo
+      DEV_DEMO_USER: partner
+      DOCUMENT_STORAGE: memory
+      PORTAL_BASE_URL: http://localhost:3100
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare database roles (mirror Supabase)
+        run: psql -v ON_ERROR_STOP=1 -f scripts/ci/test-db-roles.sql
+
+      - name: Apply every migration from scratch
+        run: npm run db:migrate
+
+      - name: Schema drift check (code vs. migrated database)
+        run: npx tsx scripts/check-schema-drift.ts
+
+      - name: Full test suite, including database-backed tests
+        env:
+          REQUIRE_DATABASE_TESTS: "1"
+        run: npm test
+
+      - name: Demo seed (every engine, real services)
+        run: npx tsx scripts/ci/check-demo-seed.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: Start the app
+        run: |
+          nohup npx next start -p 3100 > next.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3100/api/health >/dev/null && exit 0; sleep 2; done
+          echo "App did not start"; cat next.log; exit 1
+
+      - name: Install a browser for the walkthrough
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+
+      - name: Click through the demo walkthrough
+        run: node scripts/ci/walkthrough.mjs
+        env:
+          BASE_URL: http://localhost:3100
+
+      - name: Upload walkthrough screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkthrough-screenshots
+          path: walkthrough-screenshots/
+          if-no-files-found: ignore
+
+      - name: Server log on failure
+        if: failure()
+        run: tail -200 next.log || true
