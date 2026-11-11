@@ -20,7 +20,7 @@ import { tasks } from "@/db/tables/foundation";
 import type { NotificationChannel } from "@/core/notify";
 import type { Actor } from "@/core/audit";
 import type { ScheduledTaskRow } from "@/worker/hooks";
-import { ACCEPTANCE_GATES, BOOKING_COPY, BOOKING_RULE_GATES } from "../gates";
+import { ACCEPTANCE_GATES, BOOKING_COPY, BOOKING_RULE_GATES, copyKeyFor } from "../gates";
 import { LAWYER_ROLES, requireStaff, resolveEscalationContacts, STAFF_ROLES, userActor, type StaffUser } from "../common/actors";
 import { loadIntakeContext, type IntakeContext } from "../common/context";
 import { IntakeNotFoundError, IntakeRuleError, IntakeValidationError, requireReason } from "../common/errors";
@@ -221,7 +221,7 @@ export async function getBookingOptions(tx: TenantTx, input: { tenantId: string;
   if (reasons.length > 0) {
     await recordIntakeEvent(tx, { tenantId: input.tenantId, intakeSessionId: bundle.session.id, eventType: "booking_not_offered", ruleName: "booking.requires_clear_conflict", payload: { reasons } });
     // No reason is given to the person (conflicts are confidential, Rule 1.05).
-    return { offered: false, reasons, message: legalCopy(BOOKING_COPY.followUpLater.key) };
+    return { offered: false, reasons, message: legalCopy(copyKeyFor(BOOKING_COPY.followUpLater, bundle.session.language)) };
   }
   const matter = await ensureProspectiveMatter(tx, input.tenantId, bundle.session.id, now);
   const { meetingType, fee } = feeFor(ctx, bundle);
@@ -247,7 +247,7 @@ export async function getBookingOptions(tx: TenantTx, input: { tenantId: string;
     lawyers,
     unavailable,
     callbackOffered,
-    message: callbackOffered ? legalCopy(BOOKING_COPY.followUpLater.key) : null,
+    message: callbackOffered ? legalCopy(copyKeyFor(BOOKING_COPY.followUpLater, bundle.session.language)) : null,
   };
 }
 
@@ -427,7 +427,7 @@ export async function confirmBooking(tx: TenantTx, input: { tenantId: string; co
       {
         tenantId: input.tenantId,
         partyId: booked.partyId,
-        templateKey: BOOKING_COPY.confirmation.key,
+        templateKey: copyKeyFor(BOOKING_COPY.confirmation, bundle.session.language),
         channels: await clientChannels(tx, input.tenantId, booked.partyId),
         matterId: booked.matterId,
         dedupeBase: `intake.consult_confirmation:${booked.id}`,
@@ -531,9 +531,17 @@ export async function cancelConsultation(
   }
   if (input.byUserId && consult.partyId) {
     // The firm cancelled: tell the person (no reason details).
+    const bundle = await getSessionBundle(tx, input.tenantId, consult.intakeSessionId);
     await notifyParty(
       tx,
-      { tenantId: input.tenantId, partyId: consult.partyId, templateKey: BOOKING_COPY.changed.key, channels: await clientChannels(tx, input.tenantId, consult.partyId), matterId: consult.matterId, dedupeBase: `intake.consult_changed:${consult.id}` },
+      {
+        tenantId: input.tenantId,
+        partyId: consult.partyId,
+        templateKey: copyKeyFor(BOOKING_COPY.changed, bundle.session.language),
+        channels: await clientChannels(tx, input.tenantId, consult.partyId),
+        matterId: consult.matterId,
+        dedupeBase: `intake.consult_changed:${consult.id}`,
+      },
       { now }
     );
   }
@@ -618,7 +626,7 @@ export async function markNoShow(tx: TenantTx, input: { tenantId: string; consul
   if (action === "offer_rebook" && consult.partyId) {
     await notifyParty(
       tx,
-      { tenantId: input.tenantId, partyId: consult.partyId, templateKey: BOOKING_COPY.rebookOffer.key, channels: await clientChannels(tx, input.tenantId, consult.partyId), matterId: consult.matterId, dedupeBase: `intake.consult_rebook:${consult.id}` },
+      { tenantId: input.tenantId, partyId: consult.partyId, templateKey: copyKeyFor(BOOKING_COPY.rebookOffer, bundle.session.language), channels: await clientChannels(tx, input.tenantId, consult.partyId), matterId: consult.matterId, dedupeBase: `intake.consult_rebook:${consult.id}` },
       { now }
     );
     await tx.update(intakeConsultations).set({ rebookOfferedAt: now }).where(eq(intakeConsultations.id, consult.id));
@@ -685,9 +693,17 @@ export async function recordConsultOutcome(
   }
   if (input.outcome === "declined_by_firm" && consult.partyId) {
     // Lawyer-approved decline: the same neutral non-engagement notice as c62/c73.
+    const bundle = await getSessionBundle(tx, input.tenantId, consult.intakeSessionId);
     await notifyParty(
       tx,
-      { tenantId: input.tenantId, partyId: consult.partyId, templateKey: ACCEPTANCE_GATES.declineNotice.key, channels: ["in_app", "email"], matterId: consult.matterId, dedupeBase: `intake.decline:${consult.intakeSessionId}` },
+      {
+        tenantId: input.tenantId,
+        partyId: consult.partyId,
+        templateKey: copyKeyFor(ACCEPTANCE_GATES.declineNotice, bundle.session.language),
+        channels: ["in_app", "email"],
+        matterId: consult.matterId,
+        dedupeBase: `intake.decline:${consult.intakeSessionId}`,
+      },
       { now }
     );
   }
@@ -714,9 +730,17 @@ export async function putConsultationOnHold(tx: TenantTx, input: { tenantId: str
   await cancelConsultTimers(tx, input.tenantId, consult.id, now);
   if (consult.partyId) {
     // The client is told the firm needs to reschedule, never why (c67 failure paths).
+    const bundle = await getSessionBundle(tx, input.tenantId, consult.intakeSessionId);
     await notifyParty(
       tx,
-      { tenantId: input.tenantId, partyId: consult.partyId, templateKey: BOOKING_COPY.changed.key, channels: await clientChannels(tx, input.tenantId, consult.partyId), matterId: consult.matterId, dedupeBase: `intake.consult_on_hold:${consult.id}` },
+      {
+        tenantId: input.tenantId,
+        partyId: consult.partyId,
+        templateKey: copyKeyFor(BOOKING_COPY.changed, bundle.session.language),
+        channels: await clientChannels(tx, input.tenantId, consult.partyId),
+        matterId: consult.matterId,
+        dedupeBase: `intake.consult_on_hold:${consult.id}`,
+      },
       { now }
     );
   }
@@ -762,7 +786,7 @@ export async function handleConsultReminder(tx: TenantTx, tenantId: string, task
     {
       tenantId,
       partyId: consult.partyId,
-      templateKey: BOOKING_COPY.reminder.key,
+      templateKey: copyKeyFor(BOOKING_COPY.reminder, bundle.session.language),
       channels: await clientChannels(tx, tenantId, consult.partyId),
       matterId: consult.matterId,
       dedupeBase: `intake.consult_reminder:${consult.id}:${task.id}`,

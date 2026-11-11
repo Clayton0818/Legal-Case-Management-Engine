@@ -5,6 +5,13 @@
 // approved: enabling fails with 423, and every step re-checks the gates and
 // skips (logged) if anything was revoked. Follow-ups are not flags and do
 // not trigger c51 flag emails.
+//
+// c36: every template and the stop confirmation are bilingual gates
+// (English + Spanish twin, see ../gates). Enabling follow-ups requires BOTH
+// twins of every template approved — once on, a sequence can run against a
+// lead in either language, so nothing goes out in a language nobody
+// reviewed. Each actual send resolves the one gate key for that lead's own
+// session language via copyKeyFor().
 
 import { and, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
 import { intakeMessages, intakeSessionState, intakeConsultations, intakeFollowUpRuns, intakeOpenGateEvidence } from "@/db/tables/intake";
@@ -16,7 +23,7 @@ import { updateEngineSettings } from "@/core/firmSettings";
 import { createTask } from "@/core/tasks";
 import type { NotificationChannel } from "@/core/notify";
 import type { ScheduledTaskRow } from "@/worker/hooks";
-import { FOLLOW_UP_GATES, FOLLOW_UP_TEMPLATES } from "../gates";
+import { copyKeyFor, FOLLOW_UP_GATES, FOLLOW_UP_TEMPLATES } from "../gates";
 import { requireStaff, userActor } from "../common/actors";
 import { loadIntakeContext, type IntakeContext } from "../common/context";
 import { recordIntakeEvent } from "../common/events";
@@ -32,8 +39,11 @@ import { IntakeValidationError } from "../common/errors";
 
 /**
  * Switch follow-ups on or off for the firm (firm_admin). Switching ON
- * requires the outreach review and every template's review (c70 rule 6);
- * a pending gate throws PendingApprovalError → HTTP 423 with the placeholder.
+ * requires the outreach review and both language twins of every template's
+ * review (c70 rule 6, extended by c36 to the Spanish twin — a sequence can
+ * reach a lead in either language once enabled, so both need sign-off
+ * before either can be used); a pending gate throws PendingApprovalError →
+ * HTTP 423 with the placeholder.
  */
 export async function setFollowUpsEnabled(tx: TenantTx, input: { tenantId: string; byUserId: string; enabled: boolean }) {
   await requireStaff(tx, input.tenantId, input.byUserId, ["firm_admin"], "switch follow-up sequences on or off");
@@ -41,7 +51,8 @@ export async function setFollowUpsEnabled(tx: TenantTx, input: { tenantId: strin
   if (input.enabled) {
     requireApproval(FOLLOW_UP_GATES.outreach.key, { action: "intake.follow_up.enable", tenantId: input.tenantId });
     for (const trigger of FOLLOW_UP_TRIGGERS) {
-      requireApproval(FOLLOW_UP_TEMPLATES[trigger].key, { action: "intake.follow_up.enable", tenantId: input.tenantId });
+      requireApproval(FOLLOW_UP_TEMPLATES[trigger].en.key, { action: "intake.follow_up.enable", tenantId: input.tenantId });
+      requireApproval(FOLLOW_UP_TEMPLATES[trigger].es.key, { action: "intake.follow_up.enable", tenantId: input.tenantId });
       const errors = validateFollowUpSequence(trigger, ctx.settings.followUp.sequences[trigger]);
       if (errors.length > 0) throw new IntakeValidationError(errors.join(" "));
     }
@@ -102,7 +113,10 @@ async function buildContext(
     trigger,
     enabled: ctx.settings.followUp.enabled,
     outreachApproved: isApproved(FOLLOW_UP_GATES.outreach.key),
-    templateApproved: isApproved(FOLLOW_UP_TEMPLATES[trigger].key),
+    // The gate for THIS lead's own language — a lead never gets a template
+    // whose wording in their language hasn't been approved, even if the
+    // other language's twin has been (c36).
+    templateApproved: isApproved(copyKeyFor(FOLLOW_UP_TEMPLATES[trigger], session.language)),
     inboundFirst: state.channel !== "referral" || state.status !== "referral_awaiting_contact",
     stopped: Boolean(state.followUpStoppedAt),
     declined: state.fitOutcome === "no_fit" || ["not_eligible", "out_of_scope", "declined"].includes(session.terminalState ?? ""),
@@ -202,12 +216,14 @@ export async function handleFollowUpStep(tx: TenantTx, tenantId: string, task: S
   }
   const seq = ctx.settings.followUp.sequences[trigger];
   const channels = await deliverableChannels(tx, tenantId, bundle.state.partyId, seq.channels);
+  // c36: the one gate key for this lead's own session language.
+  const templateKey = copyKeyFor(FOLLOW_UP_TEMPLATES[trigger], bundle.session.language);
   const results = await notifyParty(
     tx,
     {
       tenantId,
       partyId: bundle.state.partyId!,
-      templateKey: FOLLOW_UP_TEMPLATES[trigger].key,
+      templateKey,
       channels: channels as NotificationChannel[],
       matterId: bundle.session.matterId,
       dedupeBase: `intake.follow_up:${run.id}:${step}`,
@@ -220,7 +236,7 @@ export async function handleFollowUpStep(tx: TenantTx, tenantId: string, task: S
     intakeSessionId: run.intakeSessionId,
     eventType: "follow_up_sent",
     ruleName: `follow_up.${trigger}`,
-    payload: { runId: run.id, step, templateKey: FOLLOW_UP_TEMPLATES[trigger].key, results },
+    payload: { runId: run.id, step, templateKey, results },
   });
   const nextDue = stepDueAt(run.startedAt, seq.dayOffsets, step + 1, ctx.calendar);
   if (nextDue) {
@@ -272,7 +288,7 @@ export async function stopFollowUps(
   input: { tenantId: string; intakeSessionId: string; channel: string; kind: "keyword" | "natural_language" | "staff_recorded"; now?: Date }
 ): Promise<void> {
   const now = input.now ?? new Date();
-  const { state } = await getSessionBundle(tx, input.tenantId, input.intakeSessionId);
+  const { session, state } = await getSessionBundle(tx, input.tenantId, input.intakeSessionId);
   const alreadyStopped = Boolean(state.followUpStoppedAt);
   await updateState(tx, input.tenantId, input.intakeSessionId, { followUpStoppedAt: state.followUpStoppedAt ?? now, followUpStopReason: `stop_${input.kind}` });
   await tx
@@ -280,7 +296,8 @@ export async function stopFollowUps(
     .set({ status: "stopped", stoppedReason: "stop", endedAt: now })
     .where(and(eq(intakeFollowUpRuns.tenantId, input.tenantId), eq(intakeFollowUpRuns.intakeSessionId, input.intakeSessionId), eq(intakeFollowUpRuns.status, "active")));
   await cancelScheduledTasks(tx, { tenantId: input.tenantId, taskType: INTAKE_TASK_TYPES.followUpStep, intakeSessionId: input.intakeSessionId, at: now });
-  // One stop confirmation, SMS only, once (c70 stop handling §3). Queued BEFORE texting is switched
+  // One stop confirmation, SMS only, once (c70 stop handling §3), in the
+  // lead's own session language (c36). Queued BEFORE texting is switched
   // off; the core holds it while the wording or the SMS vendor is pending review.
   if (!alreadyStopped && input.channel === "sms" && state.partyId) {
     await notifyParty(
@@ -288,7 +305,7 @@ export async function stopFollowUps(
       {
         tenantId: input.tenantId,
         partyId: state.partyId,
-        templateKey: FOLLOW_UP_GATES.stopConfirmation.key,
+        templateKey: copyKeyFor(FOLLOW_UP_GATES.stopConfirmation, session.language),
         channels: ["sms"],
         urgent: true,
         dedupeBase: `intake.stop_confirmation:${input.intakeSessionId}`,
