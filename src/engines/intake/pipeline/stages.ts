@@ -203,7 +203,17 @@ export function labelAt(
   return stages.find((s) => s.key === key)?.label ?? null;
 }
 
-/** Gate key for the attorney-reviewed generic client status of a system stage. */
-export function clientStatusGateKey(systemStage: string): string {
-  return `copy.intake.client_status.${systemStage}`;
+/**
+ * Gate key for the attorney-reviewed generic client status of a system
+ * stage, in the given language (c36: the same attorney-reviewed status
+ * each system stage already had in English gets an equally gated Spanish
+ * twin, never a hard-coded translation). Anything other than exactly "es"
+ * (case/whitespace-insensitive) stays English — kept as a tiny local check
+ * rather than importing ../gates so this pure-rules module stays free of
+ * the compliance-gate registry's side effects; ../gates's own
+ * normalizeIntakeLanguage is the source of truth everywhere else.
+ */
+export function clientStatusGateKey(systemStage: string, language?: string | null): string {
+  const isSpanish = typeof language === "string" && language.trim().toLowerCase() === "es";
+  return `copy.intake.client_status.${systemStage}${isSpanish ? "_es" : ""}`;
 }
