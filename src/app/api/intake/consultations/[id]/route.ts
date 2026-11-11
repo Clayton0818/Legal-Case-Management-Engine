@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   return tenantRoute("POST /api/intake/consultations/[id]", async ({ tx, tenantId }) => {
     const consultationId = uuid(id, "consultation id");
     const body = await readJson(req);
-    const byUserId = actingUserId(req);
+    const byUserId = await actingUserId(tx, tenantId, req);
     // Client self-service identifies the booking party; a one-time-code check is still to come (see PR gaps).
     const clientPartyId = optionalUuid(body.clientPartyId, "clientPartyId");
     switch (oneOf(body.action, ACTIONS, "action")) {
@@ -40,11 +40,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           reason: optionalStr(body, "reason"),
         });
       case "no_show":
-        return markNoShow(tx, { tenantId, consultationId, userId: requireActingUserId(req) });
+        return markNoShow(tx, { tenantId, consultationId, userId: await requireActingUserId(tx, tenantId, req) });
       case "outcome":
-        return recordConsultOutcome(tx, { tenantId, consultationId, userId: requireActingUserId(req), outcome: oneOf(body.outcome, CONSULT_OUTCOMES, "outcome"), note: optionalStr(body, "note") });
+        return recordConsultOutcome(tx, { tenantId, consultationId, userId: await requireActingUserId(tx, tenantId, req), outcome: oneOf(body.outcome, CONSULT_OUTCOMES, "outcome"), note: optionalStr(body, "note") });
       case "hold":
-        return putConsultationOnHold(tx, { tenantId, consultationId, userId: requireActingUserId(req), reason: str(body, "reason") });
+        return putConsultationOnHold(tx, { tenantId, consultationId, userId: await requireActingUserId(tx, tenantId, req), reason: str(body, "reason") });
     }
   });
 }

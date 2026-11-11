@@ -18,7 +18,7 @@ export async function PUT(req: Request) {
     const body = await readJson(req);
     if (!Array.isArray(body.rules)) throw new HttpError(400, "'rules' must be an array.");
     if (typeof body.expectedVersion !== "number") throw new HttpError(400, "'expectedVersion' is required.");
-    return saveRuleSet(tx, { tenantId, byUserId: requireActingUserId(req), rules: body.rules as FitRule[], expectedVersion: body.expectedVersion });
+    return saveRuleSet(tx, { tenantId, byUserId: await requireActingUserId(tx, tenantId, req), rules: body.rules as FitRule[], expectedVersion: body.expectedVersion });
   });
 }
 
@@ -27,6 +27,6 @@ export async function POST(req: Request) {
   return tenantRoute("POST /api/intake/acceptance/rules", async ({ tx, tenantId }) => {
     const body = await readJson(req);
     if (!Array.isArray(body.rules)) throw new HttpError(400, "'rules' must be an array.");
-    return testDraftRules(tx, { tenantId, byUserId: requireActingUserId(req), rules: body.rules as FitRule[] });
+    return testDraftRules(tx, { tenantId, byUserId: await requireActingUserId(tx, tenantId, req), rules: body.rules as FitRule[] });
   });
 }

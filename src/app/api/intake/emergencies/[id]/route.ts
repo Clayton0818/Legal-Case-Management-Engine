@@ -10,7 +10,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   return tenantRoute("POST /api/intake/emergencies/[id]", async ({ tx, tenantId }) => {
     const alertId = uuid(id, "alert id");
     const body = await readJson(req);
-    const userId = requireActingUserId(req);
+    const userId = await requireActingUserId(tx, tenantId, req);
     if (oneOf(body.action, ["acknowledge", "downgrade"] as const, "action") === "acknowledge") {
       return acknowledgeEmergency(tx, { tenantId, alertId, userId });
     }

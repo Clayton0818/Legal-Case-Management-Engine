@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   return tenantRoute("POST /api/intake/referrals", async ({ tx, tenantId }) => {
     const body = await readJson(req);
-    const staffUserId = requireActingUserId(req);
+    const staffUserId = await requireActingUserId(tx, tenantId, req);
     if (body.action === "activate") {
       await activateReferral(tx, {
         tenantId,

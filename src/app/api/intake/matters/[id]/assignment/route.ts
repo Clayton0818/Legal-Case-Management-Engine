@@ -28,6 +28,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   return tenantRoute("PUT /api/intake/matters/[id]/assignment", async ({ tx, tenantId }) => {
     const body = await readJson(req);
-    return overrideAssignment(tx, { tenantId, matterId: uuid(id, "matter id"), byUserId: requireActingUserId(req), assigneeUserId: uuid(body.assigneeUserId, "assigneeUserId"), reason: str(body, "reason") });
+    return overrideAssignment(tx, { tenantId, matterId: uuid(id, "matter id"), byUserId: await requireActingUserId(tx, tenantId, req), assigneeUserId: uuid(body.assigneeUserId, "assigneeUserId"), reason: str(body, "reason") });
   });
 }

@@ -1,13 +1,13 @@
 // Request helpers for the intake API routes.
 //
-// ACTING USER: real staff authentication arrives with c34. Until then staff
-// routes read the acting user's id from the `x-intake-user-id` header (the
-// same stand-in approach as src/tenancy/devTenant.ts). Nothing trusts a
-// client-supplied ROLE: every service re-reads the user row inside the
-// tenant transaction and checks the role itself.
+// ACTING USER: the signed-in staff member from the shared sign-in (c34,
+// src/auth/staff.ts). The old `x-intake-user-id` header is honoured in dev
+// mode only. Nothing trusts a client-supplied ROLE: every service re-reads
+// the user row inside the tenant transaction and checks the role itself.
 
 import type { TenantTx } from "@/tenancy/withTenant";
 import { HttpError } from "@/tenancy/route";
+import { resolveStaffUserId } from "@/auth/staff";
 import { requireStaff, STAFF_ROLES, type UserRole } from "@/engines/intake/common/actors";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -77,19 +77,22 @@ export function oneOf<T extends string>(value: unknown, allowed: readonly T[], n
   return value as T;
 }
 
-/** The acting staff member's id (header stand-in until c34), or null. */
-export function actingUserId(req: Request): string | null {
-  const v = req.headers.get("x-intake-user-id");
-  return v && UUID_RE.test(v) ? v : null;
+/** The intake engine's old dev header (dev mode only; see src/auth/staff.ts). */
+export const INTAKE_DEV_USER_HEADER = "x-intake-user-id";
+
+/**
+ * The signed-in staff member's id, or null when the caller is not staff (a
+ * client using the intake chat). See src/auth/staff.ts for where it comes from.
+ */
+export async function actingUserId(tx: TenantTx, tenantId: string, req: Request): Promise<string | null> {
+  return resolveStaffUserId(tx, tenantId, req, { header: INTAKE_DEV_USER_HEADER, required: false });
 }
 
-export function requireActingUserId(req: Request): string {
-  const id = actingUserId(req);
-  if (!id) throw new HttpError(401, "Staff sign-in is required (x-intake-user-id until c34 authentication).");
-  return id;
+/** The signed-in staff member's id; HTTP 401 when nobody is signed in. */
+export async function requireActingUserId(tx: TenantTx, tenantId: string, req: Request): Promise<string> {
+  return (await resolveStaffUserId(tx, tenantId, req, { header: INTAKE_DEV_USER_HEADER, required: true }))!;
 }
 
-/** Load and role-check the acting staff member. */
 export async function requireActingStaff(tx: TenantTx, tenantId: string, req: Request, roles: readonly UserRole[] = STAFF_ROLES, action = "use the intake console") {
-  return requireStaff(tx, tenantId, requireActingUserId(req), roles, action);
+  return requireStaff(tx, tenantId, await requireActingUserId(tx, tenantId, req), roles, action);
 }
