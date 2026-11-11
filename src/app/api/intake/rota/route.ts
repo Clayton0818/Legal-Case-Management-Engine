@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       const body = await readJson(req);
       return addRotaShift(tx, {
         tenantId,
-        byUserId: requireActingUserId(req),
+        byUserId: await requireActingUserId(tx, tenantId, req),
         userId: uuid(body.userId, "userId"),
         role: oneOf(body.role, ["primary", "backup", "staff"] as const, "role"),
         startsAt: optionalDate(body, "startsAt"),
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   return tenantRoute("DELETE /api/intake/rota", async ({ tx, tenantId }) => {
     const shiftId = uuid(new URL(req.url).searchParams.get("shiftId"), "shiftId");
-    await deactivateRotaShift(tx, { tenantId, byUserId: requireActingUserId(req), shiftId });
+    await deactivateRotaShift(tx, { tenantId, byUserId: await requireActingUserId(tx, tenantId, req), shiftId });
     return { ok: true };
   });
 }

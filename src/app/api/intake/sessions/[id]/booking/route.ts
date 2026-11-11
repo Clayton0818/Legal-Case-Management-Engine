@@ -9,7 +9,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   return tenantRoute("GET /api/intake/sessions/[id]/booking", async ({ tx, tenantId }) => {
     const options = await getBookingOptions(tx, { tenantId, intakeSessionId: uuid(id, "session id") });
-    if (actingUserId(req)) return options;
+    if (await actingUserId(tx, tenantId, req)) return options;
     // The person never learns why booking is not offered (conflicts are confidential),
     // nor anything about internal calendar problems.
     if (!options.offered) return { offered: false, message: options.message };
@@ -29,7 +29,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         lawyerUserId: uuid(body.lawyerUserId, "lawyerUserId"),
         startsAt: date(body, "startsAt"),
         format: oneOf(body.format, ["video", "phone", "in_person"] as const, "format"),
-        bookedByUserId: actingUserId(req),
+        bookedByUserId: await actingUserId(tx, tenantId, req),
       });
       return { consultationId: row.id, holdExpiresAt: row.holdExpiresAt, startsAt: row.startsAt, endsAt: row.endsAt, paymentStatus: row.paymentStatus };
     },

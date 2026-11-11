@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const intakeSessionId = uuid(id, "session id");
     const body = await readJson(req);
     const action = oneOf(body.action, ACTIONS, "action");
-    const staffUserId = actingUserId(req);
+    const staffUserId = await actingUserId(tx, tenantId, req);
     switch (action) {
       case "acknowledge_disclosures":
         await acknowledgeDisclosures(tx, { tenantId, intakeSessionId, staffUserId });
@@ -72,22 +72,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
         return { ok: true };
       case "release_unsolicited_details":
-        await releaseUnsolicitedDetails(tx, { tenantId, intakeSessionId, userId: requireActingUserId(req) });
+        await releaseUnsolicitedDetails(tx, { tenantId, intakeSessionId, userId: await requireActingUserId(tx, tenantId, req) });
         return { ok: true };
       case "human_contact":
-        await recordHumanContact(tx, { tenantId, intakeSessionId, userId: requireActingUserId(req), method: oneOf(body.method, ["call_connected", "message_sent", "in_person"] as const, "method") });
+        await recordHumanContact(tx, { tenantId, intakeSessionId, userId: await requireActingUserId(tx, tenantId, req), method: oneOf(body.method, ["call_connected", "message_sent", "in_person"] as const, "method") });
         return { ok: true };
       case "contact_attempt":
-        return recordContactAttempt(tx, { tenantId, intakeSessionId, userId: requireActingUserId(req), channel: oneOf(body.channel, ["phone", "sms", "email"] as const, "channel"), note: optionalStr(body, "note") ?? undefined });
+        return recordContactAttempt(tx, { tenantId, intakeSessionId, userId: await requireActingUserId(tx, tenantId, req), channel: oneOf(body.channel, ["phone", "sms", "email"] as const, "channel"), note: optionalStr(body, "note") ?? undefined });
       case "not_an_inquiry":
-        await closeAsNotAnInquiry(tx, { tenantId, intakeSessionId, userId: requireActingUserId(req), reason: str(body, "reason") });
+        await closeAsNotAnInquiry(tx, { tenantId, intakeSessionId, userId: await requireActingUserId(tx, tenantId, req), reason: str(body, "reason") });
         return { ok: true };
       case "interrupted":
         await markInterrupted(tx, { tenantId, intakeSessionId });
         return { ok: true };
       case "stop_follow_ups":
         // Staff record a stop request the person made by phone or in person (c70).
-        requireActingUserId(req);
+        await requireActingUserId(tx, tenantId, req);
         await stopFollowUps(tx, { tenantId, intakeSessionId, channel: "staff", kind: "staff_recorded" });
         return { ok: true };
     }
