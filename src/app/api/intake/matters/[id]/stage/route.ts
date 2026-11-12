@@ -10,7 +10,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   return tenantRoute("GET /api/intake/matters/[id]/stage", async ({ tx, tenantId }) => {
     const matterId = uuid(id, "matter id");
     // Without a staff user only the attorney-reviewed generic status is returned, never the firm label.
-    if (!actingUserId(req)) return clientStatusForMatter(tx, tenantId, matterId);
+    if (!(await actingUserId(tx, tenantId, req))) return clientStatusForMatter(tx, tenantId, matterId);
     await requireActingStaff(tx, tenantId, req);
     return getMatterStageView(tx, tenantId, matterId);
   });
@@ -20,6 +20,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   return tenantRoute("POST /api/intake/matters/[id]/stage", async ({ tx, tenantId }) => {
     const body = await readJson(req);
-    return moveMatterToFirmStage(tx, { tenantId, matterId: uuid(id, "matter id"), toKey: str(body, "toKey"), byUserId: requireActingUserId(req), reason: optionalStr(body, "reason") ?? undefined });
+    return moveMatterToFirmStage(tx, { tenantId, matterId: uuid(id, "matter id"), toKey: str(body, "toKey"), byUserId: await requireActingUserId(tx, tenantId, req), reason: optionalStr(body, "reason") ?? undefined });
   });
 }

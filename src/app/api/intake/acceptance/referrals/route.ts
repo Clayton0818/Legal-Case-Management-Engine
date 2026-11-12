@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       const body = await readJson(req);
       return addReferralEntry(tx, {
         tenantId,
-        byUserId: requireActingUserId(req),
+        byUserId: await requireActingUserId(tx, tenantId, req),
         name: str(body, "name"),
         contact: str(body, "contact"),
         practiceAreas: stringArray(body, "practiceAreas"),
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   return tenantRoute("DELETE /api/intake/acceptance/referrals", async ({ tx, tenantId }) => {
     const entryId = uuid(new URL(req.url).searchParams.get("entryId"), "entryId");
-    await deactivateReferralEntry(tx, { tenantId, byUserId: requireActingUserId(req), entryId });
+    await deactivateReferralEntry(tx, { tenantId, byUserId: await requireActingUserId(tx, tenantId, req), entryId });
     return { ok: true };
   });
 }

@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   return tenantRoute("POST /api/intake/matters/[id]/open", async ({ tx, tenantId }) => {
     const matterId = uuid(id, "matter id");
     const body = await readJson(req);
-    const userId = requireActingUserId(req);
+    const userId = await requireActingUserId(tx, tenantId, req);
     switch (oneOf(body.action, ["evidence", "open", "retry_handoff", "payment_reversal"] as const, "action")) {
       case "evidence":
         return recordGateEvidence(tx, { tenantId, matterId, userId, evidence: evidenceFrom(body) });

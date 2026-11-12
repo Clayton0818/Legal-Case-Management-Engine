@@ -20,6 +20,6 @@ export async function PUT(req: Request) {
     if (!Array.isArray(body.stages)) throw new HttpError(400, "'stages' must be an array.");
     if (typeof body.expectedVersion !== "number") throw new HttpError(400, "'expectedVersion' is required.");
     const moves = body.moves && typeof body.moves === "object" ? (body.moves as Record<string, string>) : {};
-    return savePipeline(tx, { tenantId, byUserId: requireActingUserId(req), stages: body.stages as PipelineStageDef[], expectedVersion: body.expectedVersion, moves });
+    return savePipeline(tx, { tenantId, byUserId: await requireActingUserId(tx, tenantId, req), stages: body.stages as PipelineStageDef[], expectedVersion: body.expectedVersion, moves });
   });
 }
