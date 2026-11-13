@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  clientStatusGateKey,
   defaultPipeline,
   labelAt,
   resolveFirmStage,
@@ -102,5 +103,29 @@ describe("c14 pipeline stages", () => {
     const v2 = { effectiveFrom: new Date("2026-06-01"), stages: defaultPipeline().map((s) => (s.key === "prospective" ? { ...s, label: "New lead" } : s)) };
     expect(labelAt([v1, v2], new Date("2026-03-01"), "prospective")).toBe("Prospective");
     expect(labelAt([v1, v2], new Date("2026-07-01"), "prospective")).toBe("New lead");
+  });
+
+  // c36 — the client-facing generic status gate key picks up the caller's
+  // language, with the same "anything but 'es' is English" default used
+  // everywhere else in the engine.
+  describe("c36 — clientStatusGateKey resolves by language", () => {
+    it("defaults to the plain (English) key", () => {
+      expect(clientStatusGateKey("prospective")).toBe("copy.intake.client_status.prospective");
+      expect(clientStatusGateKey("prospective", null)).toBe("copy.intake.client_status.prospective");
+      expect(clientStatusGateKey("prospective", undefined)).toBe("copy.intake.client_status.prospective");
+      expect(clientStatusGateKey("prospective", "fr")).toBe("copy.intake.client_status.prospective");
+    });
+
+    it("appends _es for Spanish, case- and whitespace-insensitively", () => {
+      expect(clientStatusGateKey("prospective", "es")).toBe("copy.intake.client_status.prospective_es");
+      expect(clientStatusGateKey("prospective", "ES")).toBe("copy.intake.client_status.prospective_es");
+      expect(clientStatusGateKey("prospective", " es ")).toBe("copy.intake.client_status.prospective_es");
+    });
+
+    it("works for every system stage, not just one", () => {
+      for (const stage of SYSTEM_STAGES) {
+        expect(clientStatusGateKey(stage, "es")).toBe(`copy.intake.client_status.${stage}_es`);
+      }
+    });
   });
 });

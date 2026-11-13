@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDevTenantId } from "@/tenancy/devTenant";
 import { firmConfigVersions, intakeEvents, intakeSessions } from "@/db/schema";
 import { getPrompt } from "@/lib/intakeEntryFlow/engine";
+import { normalizeIntakeLanguage } from "@/engines/intake/gates";
 
 // withTenant (and, transitively, src/tenancy/db.ts) is imported lazily
 // inside the handler, not statically at module scope. db.ts throws at
@@ -12,6 +13,8 @@ import { getPrompt } from "@/lib/intakeEntryFlow/engine";
 // requirement (CI's build step deliberately runs without it; see
 // .github/workflows/ci.yml). A dynamic import defers that module
 // evaluation to request time, which is the only time it should matter.
+// normalizeIntakeLanguage carries no such dependency (just the compliance
+// gate registry), so it is imported statically like any other pure helper.
 
 // Thrown when this tenant has no firm_config_versions row to reference.
 // intake_sessions.firm_config_version_id is a NOT NULL foreign key
@@ -22,13 +25,31 @@ import { getPrompt } from "@/lib/intakeEntryFlow/engine";
 // intake), not something an API route should paper over silently.
 class FirmNotConfiguredError extends Error {}
 
+/**
+ * The language to start the session in (c36). An optional JSON body may
+ * name it explicitly (`{ "language": "es" }`); anything else — no body, an
+ * unparsable body, or no `language` field — defaults to English, same as
+ * this route's behaviour before c36. `req.json()` on a body-less POST
+ * throws, which is expected and simply falls through to the default.
+ */
+async function requestedLanguage(req: Request): Promise<"en" | "es"> {
+  try {
+    const body = (await req.json()) as unknown;
+    const value = body && typeof body === "object" ? (body as Record<string, unknown>).language : undefined;
+    return normalizeIntakeLanguage(value);
+  } catch {
+    return "en";
+  }
+}
+
 // Creates a new intake session for the (currently single, dev-hardcoded)
 // tenant this deployment serves — see src/tenancy/devTenant.ts's own
 // comment. Real per-firm resolution (which firm's embedded widget the
 // visitor is on) is out of scope for this card.
-export async function POST() {
+export async function POST(req: Request) {
   const tenantId = getDevTenantId();
   const { withTenant } = await import("@/tenancy/withTenant");
+  const language = await requestedLanguage(req);
 
   try {
     const session = await withTenant(tenantId, async (tx) => {
@@ -48,7 +69,7 @@ export async function POST() {
         .values({
           tenantId,
           currentNode: "classify_caller",
-          language: "en",
+          language,
           channel: "web_chat",
           collectedAnswers: {},
           firmConfigVersionId: config.id,
@@ -64,7 +85,7 @@ export async function POST() {
         intakeSessionId: created.id,
         eventType: "session_started",
         actorType: "system",
-        payload: { channel: "web_chat" },
+        payload: { channel: "web_chat", language },
         firmConfigVersionId: config.id,
       });
 

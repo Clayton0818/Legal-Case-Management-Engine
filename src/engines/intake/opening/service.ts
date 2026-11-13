@@ -19,7 +19,7 @@ import { normalizeName } from "@/core/contacts";
 import { raiseFlag } from "@/core/flags";
 import { createTask } from "@/core/tasks";
 import type { ScheduledTaskRow } from "@/worker/hooks";
-import { OPEN_MATTER_GATES } from "../gates";
+import { copyKeyFor, OPEN_MATTER_GATES } from "../gates";
 import { LAWYER_ROLES, requireStaff, resolveEscalationContacts, STAFF_ROLES, userActor } from "../common/actors";
 import { loadIntakeContext, type IntakeContext } from "../common/context";
 import { IntakeNotFoundError, IntakeRuleError, IntakeValidationError, requireReason } from "../common/errors";
@@ -360,13 +360,13 @@ async function runHandoff(tx: TenantTx, ctx: IntakeContext, matter: MatterRow, i
     case "fee_schedule":
       return handoffTask(tx, ctx, matter, item, "Activate the fee arrangement and pay schedule from the signed agreement", { fee }, now);
     case "client_updates": {
-      await notifyParty(tx, { tenantId: ctx.tenantId, partyId: matter.primaryPartyId, templateKey: OPEN_MATTER_GATES.matterOpened.key, channels: ["in_app", "email"], matterId: matter.id, dedupeBase: `intake.matter_opened:${matter.id}` }, { now });
+      await notifyParty(tx, { tenantId: ctx.tenantId, partyId: matter.primaryPartyId, templateKey: copyKeyFor(OPEN_MATTER_GATES.matterOpened, session?.language), channels: ["in_app", "email"], matterId: matter.id, dedupeBase: `intake.matter_opened:${matter.id}` }, { now });
       return handoffTask(tx, ctx, matter, item, "Start the client update rhythm", {}, now);
     }
     case "health_meter":
       return handoffTask(tx, ctx, matter, item, "Start the matter health meter", {}, now);
     case "portal_invite":
-      await notifyParty(tx, { tenantId: ctx.tenantId, partyId: matter.primaryPartyId, templateKey: OPEN_MATTER_GATES.portalInvite.key, channels: ["email"], matterId: matter.id, dedupeBase: `intake.portal_invite:${matter.id}` }, { now });
+      await notifyParty(tx, { tenantId: ctx.tenantId, partyId: matter.primaryPartyId, templateKey: copyKeyFor(OPEN_MATTER_GATES.portalInvite, session?.language), channels: ["email"], matterId: matter.id, dedupeBase: `intake.portal_invite:${matter.id}` }, { now });
       return { status: "done" };
     case "team": {
       if (matter.assignedUserId) return { status: "done" };

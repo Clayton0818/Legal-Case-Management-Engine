@@ -13,7 +13,7 @@ import { isApproved } from "@/compliance/approvals";
 import { enabledPracticeAreas } from "@/core/practiceAreas";
 import { completeTask, createTask } from "@/core/tasks";
 import { tasks } from "@/db/tables/foundation";
-import { ACCEPTANCE_GATES } from "../gates";
+import { ACCEPTANCE_GATES, copyKeyFor } from "../gates";
 import { LAWYER_ROLES, requireStaff, STAFF_ROLES, userActor } from "../common/actors";
 import { loadIntakeContext, type IntakeContext } from "../common/context";
 import { IntakeNotFoundError, IntakeRuleError, IntakeValidationError, requireReason } from "../common/errors";
@@ -242,9 +242,10 @@ export async function evaluateFit(tx: TenantTx, input: { tenantId: string; intak
 }
 
 /**
- * Send the neutral non-engagement notice (c62 letter, gated wording) and
- * optional referrals from the firm's own list, and close the inquiry.
- * `decidedByUserId` null = automatic decline under an approved rule.
+ * Send the neutral non-engagement notice (c62 letter, gated wording — the
+ * one gate key for this session's own language, c36) and optional referrals
+ * from the firm's own list, and close the inquiry. `decidedByUserId` null =
+ * automatic decline under an approved rule.
  */
 async function sendDecline(
   tx: TenantTx,
@@ -257,6 +258,7 @@ async function sendDecline(
   now: Date
 ): Promise<void> {
   const { session, state } = bundle;
+  const declineNoticeKey = copyKeyFor(ACCEPTANCE_GATES.declineNotice, session.language);
   let referrals: ReferralEntry[] = [];
   if (ctx.settings.acceptance.referralsEnabled && isApproved(ACCEPTANCE_GATES.referralList.key)) {
     const rows = await tx.select().from(intakeReferralDirectory).where(and(eq(intakeReferralDirectory.tenantId, ctx.tenantId), eq(intakeReferralDirectory.active, true)));
@@ -265,7 +267,7 @@ async function sendDecline(
   if (state.partyId) {
     await notifyParty(
       tx,
-      { tenantId: ctx.tenantId, partyId: state.partyId, templateKey: ACCEPTANCE_GATES.declineNotice.key, channels: ["in_app", "email"], dedupeBase: `intake.decline:${session.id}` },
+      { tenantId: ctx.tenantId, partyId: state.partyId, templateKey: declineNoticeKey, channels: ["in_app", "email"], dedupeBase: `intake.decline:${session.id}` },
       { now }
     );
   }
@@ -299,7 +301,7 @@ async function sendDecline(
     actor: decidedByUserId ? userActor(decidedByUserId) : undefined,
     entityType: "fit_evaluation",
     entityId: evaluationId,
-    payload: { referralIds: referrals.map((r) => r.id), noticeGate: ACCEPTANCE_GATES.declineNotice.key, wordingApproved: isApproved(ACCEPTANCE_GATES.declineNotice.key) },
+    payload: { referralIds: referrals.map((r) => r.id), noticeGate: declineNoticeKey, wordingApproved: isApproved(declineNoticeKey) },
   });
 }
 

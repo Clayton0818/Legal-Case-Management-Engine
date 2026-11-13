@@ -16,6 +16,18 @@ export { NOTIFY_COPY_GATES, RULE_GATES, VENDOR_GATES };
 
 export type IntakeLanguage = "en" | "es";
 
+/**
+ * The language a copy gate or routing decision should use, from whatever a
+ * caller, a stored session, or a request body hands us. Pure: anything that
+ * isn't exactly "es" (case/whitespace-insensitive) falls back to "en" — the
+ * same default every call site already used ad hoc (`input.language ?? "en"`
+ * in channels/service.ts, inline ternaries in the inbound route, …). Centralised
+ * here so the default and the one supported second language stay in one place.
+ */
+export function normalizeIntakeLanguage(value: unknown): IntakeLanguage {
+  return typeof value === "string" && value.trim().toLowerCase() === "es" ? "es" : "en";
+}
+
 /** Define an English gate plus its Spanish twin (c36). Returns both. */
 function bilingual(def: {
   key: string;
@@ -38,7 +50,7 @@ function bilingual(def: {
 
 /** The gate key for a bilingual copy item in the given language. */
 export function copyKeyFor(base: { en: Gate; es: Gate }, language: string | null | undefined): string {
-  return language === "es" ? base.es.key : base.en.key;
+  return normalizeIntakeLanguage(language) === "es" ? base.es.key : base.en.key;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,49 +198,58 @@ export const EMERGENCY_DETECTION_GATE = defineGate({
 // ---------------------------------------------------------------------------
 
 export const BOOKING_COPY = {
-  confirmation: defineGate({
+  confirmation: bilingual({
     key: "copy.intake.consult_confirmation",
     cardIds: ["c67"],
-    reviewers: ["attorney"],
     description: "Consultation booking confirmation (states a booked consult does not create an attorney-client relationship)",
     draft:
       "Subject: Your consultation with {firmName} is booked\n\n" +
       "Your consultation is booked. The date, time and how to join are in your secure portal: {portalUrl}\n\n" +
       "Booking a consultation does not make {firmName} your lawyer. You can reschedule or cancel from the portal.",
+    draftEs:
+      "Subject: Su consulta con {firmName} está confirmada\n\n" +
+      "Su consulta ha sido confirmada. La fecha, la hora y cómo participar están en su portal seguro: {portalUrl}\n\n" +
+      "Reservar una consulta no convierte a {firmName} en su abogado. Puede reprogramar o cancelar desde el portal.",
   }),
-  reminder: defineGate({
+  reminder: bilingual({
     key: "copy.intake.consult_reminder",
     cardIds: ["c67"],
-    reviewers: ["attorney"],
     description: "Consultation reminder (no case facts; reschedule/cancel link)",
     draft:
       "Subject: Reminder: your consultation with {firmName}\n\n" +
       "This is a reminder of your upcoming consultation. Details and reschedule/cancel options: {portalUrl}",
+    draftEs:
+      "Subject: Recordatorio: su consulta con {firmName}\n\n" +
+      "Este es un recordatorio de su próxima consulta. Detalles y opciones para reprogramar o cancelar: {portalUrl}",
   }),
-  changed: defineGate({
+  changed: bilingual({
     key: "copy.intake.consult_changed",
     cardIds: ["c67"],
-    reviewers: ["attorney"],
     description: "Notice that a consultation was rescheduled or cancelled (no reason details)",
     draft:
       "Subject: Your consultation with {firmName} has changed\n\n" +
       "There is a change to your consultation. Please see your secure portal for details: {portalUrl}",
+    draftEs:
+      "Subject: Su consulta con {firmName} ha cambiado\n\n" +
+      "Hay un cambio en su consulta. Por favor consulte su portal seguro para más detalles: {portalUrl}",
   }),
-  rebookOffer: defineGate({
+  rebookOffer: bilingual({
     key: "copy.intake.consult_rebook_offer",
     cardIds: ["c67"],
-    reviewers: ["attorney"],
     description: "Single re-book offer after a missed consultation (no pressure language)",
     draft:
       "Subject: We missed you — {firmName}\n\n" +
       "We were sorry to miss you. If you would still like a consultation, you can choose a new time here: {portalUrl}",
+    draftEs:
+      "Subject: La extrañamos — {firmName}\n\n" +
+      "Lamentamos no haber podido atenderle. Si todavía desea una consulta, puede elegir un nuevo horario aquí: {portalUrl}",
   }),
-  followUpLater: defineGate({
+  followUpLater: bilingual({
     key: "copy.intake.booking_follow_up_later",
     cardIds: ["c67"],
-    reviewers: ["attorney"],
     description: "Shown instead of booking slots when booking cannot be offered yet (no reason given)",
     draft: "Thank you. A member of our team will follow up with you about next steps.",
+    draftEs: "Gracias. Un miembro de nuestro equipo se comunicará con usted sobre los próximos pasos.",
   }),
 } as const;
 
@@ -264,23 +285,27 @@ export const OPEN_MATTER_GATES = {
     reviewers: ["attorney", "cpa"],
     description: "Pre-c75 staff attestation that a retainer was deposited to trust outside the product; what counts as 'received'",
   }),
-  portalInvite: defineGate({
+  portalInvite: bilingual({
     key: "copy.intake.portal_invite",
     cardIds: ["c68", "c11"],
-    reviewers: ["attorney"],
     description: "Client portal invitation sent when a matter opens",
     draft:
       "Subject: Your secure client portal — {firmName}\n\n" +
       "{firmName} has set up a secure client portal for you. Please sign in here: {portalUrl}",
+    draftEs:
+      "Subject: Su portal seguro de cliente — {firmName}\n\n" +
+      "{firmName} ha configurado un portal seguro para usted. Por favor inicie sesión aquí: {portalUrl}",
   }),
-  matterOpened: defineGate({
+  matterOpened: bilingual({
     key: "copy.intake.matter_opened",
     cardIds: ["c68", "c54"],
-    reviewers: ["attorney"],
     description: "First client update after the lawyer opens the matter",
     draft:
       "Subject: Your matter with {firmName} is open\n\n" +
       "Your matter is now open. Your next steps and updates will appear in your secure portal: {portalUrl}",
+    draftEs:
+      "Subject: Su asunto con {firmName} está abierto\n\n" +
+      "Su asunto ya está abierto. Sus próximos pasos y actualizaciones aparecerán en su portal seguro: {portalUrl}",
   }),
 } as const;
 
@@ -315,45 +340,54 @@ export const FOLLOW_UP_GATES = {
     reviewers: ["attorney"],
     description: "Follow-ups for personal-injury inquiries (§ 38.12 31-day rule research pending review)",
   }),
-  stopConfirmation: defineGate({
+  stopConfirmation: bilingual({
     key: "copy.intake.follow_up_stop_confirmation",
     cardIds: ["c70"],
-    reviewers: ["attorney"],
     description: "Single confirmation that follow-up messages have stopped",
     draft: "{firmName}: you will not receive further follow-up messages about this inquiry.",
+    draftEs: "{firmName}: usted no recibirá más mensajes de seguimiento sobre esta consulta.",
   }),
 } as const;
 
 export const FOLLOW_UP_TEMPLATES = {
-  abandoned_chat: defineGate({
+  abandoned_chat: bilingual({
     key: "copy.intake.follow_up_abandoned_chat",
     cardIds: ["c70"],
-    reviewers: ["attorney"],
     description: "Follow-up to someone who stopped part-way through intake (no case facts, no pressure, how to stop)",
     draft:
       "Subject: You started an inquiry with {firmName}\n\n" +
       "You recently started an inquiry with {firmName}. If you would like to continue, you can pick up where you left off: {portalUrl}\n\n" +
       "If you do not want further messages, reply STOP.",
+    draftEs:
+      "Subject: Usted inició una consulta con {firmName}\n\n" +
+      "Recientemente inició una consulta con {firmName}. Si desea continuar, puede retomarla donde la dejó: {portalUrl}\n\n" +
+      "Si no desea recibir más mensajes, responda ALTO.",
   }),
-  not_booked: defineGate({
+  not_booked: bilingual({
     key: "copy.intake.follow_up_not_booked",
     cardIds: ["c70"],
-    reviewers: ["attorney"],
     description: "Follow-up to someone who completed intake but has not booked (no case facts, no pressure, how to stop)",
     draft:
       "Subject: Booking your consultation with {firmName}\n\n" +
       "You recently contacted {firmName}. If you would like to book a consultation, you can choose a time here: {portalUrl}\n\n" +
       "If you do not want further messages, reply STOP.",
+    draftEs:
+      "Subject: Programe su consulta con {firmName}\n\n" +
+      "Recientemente se comunicó con {firmName}. Si desea programar una consulta, puede elegir un horario aquí: {portalUrl}\n\n" +
+      "Si no desea recibir más mensajes, responda ALTO.",
   }),
-  not_signed: defineGate({
+  not_signed: bilingual({
     key: "copy.intake.follow_up_not_signed",
     cardIds: ["c70"],
-    reviewers: ["attorney"],
     description: "Follow-up to someone who had a consultation and has an agreement waiting (no pressure, how to stop)",
     draft:
       "Subject: Your documents from {firmName}\n\n" +
       "There are documents waiting for you in your secure portal: {portalUrl}\n\n" +
       "If you do not want further messages, reply STOP.",
+    draftEs:
+      "Subject: Sus documentos de {firmName}\n\n" +
+      "Hay documentos esperando por usted en su portal seguro: {portalUrl}\n\n" +
+      "Si no desea recibir más mensajes, responda ALTO.",
   }),
 } as const;
 
@@ -391,16 +425,20 @@ export const ACCEPTANCE_GATES = {
     reviewers: ["attorney", "founder_decision"],
     description: "Which fit-rule types may decline a prospect automatically without a lawyer",
   }),
-  declineNotice: defineGate({
+  declineNotice: bilingual({
     key: "copy.intake.decline_notice",
     cardIds: ["c73", "c62"],
-    reviewers: ["attorney"],
     description: "Non-engagement notice for a declined inquiry (neutral, no merits, time limits may apply)",
     draft:
       "Subject: Your inquiry with {firmName}\n\n" +
       "Thank you for contacting {firmName}. We are unable to take this matter, and we have not formed an attorney-client relationship with you. " +
       "This is not a statement about the merits of your situation. Legal matters can be subject to time limits, so if you wish to pursue this, " +
       "please consult another lawyer promptly. Referral options, if any, are available here: {portalUrl}",
+    draftEs:
+      "Subject: Su consulta con {firmName}\n\n" +
+      "Gracias por comunicarse con {firmName}. No podemos encargarnos de este asunto y no hemos establecido una relación abogado-cliente con usted. " +
+      "Esto no es una declaración sobre los méritos de su situación. Los asuntos legales pueden estar sujetos a plazos, por lo que si desea continuar, " +
+      "le recomendamos consultar a otro abogado lo antes posible. Las opciones de referencia, si las hay, están disponibles aquí: {portalUrl}",
   }),
   referralList: defineGate({
     key: "rules.intake.referral_list",
@@ -414,28 +452,34 @@ export const ACCEPTANCE_GATES = {
 // c14 — client-facing generic status per system stage
 // ---------------------------------------------------------------------------
 
-const CLIENT_STATUS_DRAFTS: Record<string, string> = {
-  prospective: "We have received your inquiry.",
-  consultation_scheduled: "Your consultation is scheduled.",
-  consult_completed_manual_follow_up: "We will be in touch about next steps.",
-  pending_review: "We are reviewing your inquiry.",
-  did_not_schedule: "Your inquiry is closed. You are welcome to contact us again.",
-  did_not_hire_referred_out: "Your inquiry is closed.",
-  declined_conflict: "Your inquiry is closed.",
-  retained: "Your matter is open.",
-  closed: "Your matter is closed.",
+const CLIENT_STATUS_DRAFTS: Record<string, { en: string; es: string }> = {
+  prospective: { en: "We have received your inquiry.", es: "Hemos recibido su consulta." },
+  consultation_scheduled: { en: "Your consultation is scheduled.", es: "Su consulta está programada." },
+  consult_completed_manual_follow_up: {
+    en: "We will be in touch about next steps.",
+    es: "Nos pondremos en contacto sobre los próximos pasos.",
+  },
+  pending_review: { en: "We are reviewing your inquiry.", es: "Estamos revisando su consulta." },
+  did_not_schedule: {
+    en: "Your inquiry is closed. You are welcome to contact us again.",
+    es: "Su consulta está cerrada. Puede comunicarse con nosotros nuevamente cuando lo desee.",
+  },
+  did_not_hire_referred_out: { en: "Your inquiry is closed.", es: "Su consulta está cerrada." },
+  declined_conflict: { en: "Your inquiry is closed.", es: "Su consulta está cerrada." },
+  retained: { en: "Your matter is open.", es: "Su asunto está abierto." },
+  closed: { en: "Your matter is closed.", es: "Su asunto está cerrado." },
 };
 
-export const CLIENT_STATUS_GATES: Readonly<Record<string, Gate>> = Object.freeze(
+export const CLIENT_STATUS_GATES: Readonly<Record<string, { en: Gate; es: Gate }>> = Object.freeze(
   Object.fromEntries(
     Object.entries(CLIENT_STATUS_DRAFTS).map(([stage, draft]) => [
       stage,
-      defineGate({
+      bilingual({
         key: `copy.intake.client_status.${stage}`,
         cardIds: ["c14", "c11"],
-        reviewers: ["attorney"],
         description: `Generic client-facing status for the '${stage}' stage (must not reveal conflicts or imply representation early)`,
-        draft,
+        draft: draft.en,
+        draftEs: draft.es,
       }),
     ])
   )
@@ -447,15 +491,23 @@ export const INTAKE_GATE_KEYS: readonly string[] = [
   ...Object.values(CHANNEL_RULE_GATES).map((g) => g.key),
   ...Object.values(EMERGENCY_COPY).flatMap((g) => [g.en.key, g.es.key]),
   EMERGENCY_DETECTION_GATE.key,
-  ...Object.values(BOOKING_COPY).map((g) => g.key),
+  ...Object.values(BOOKING_COPY).flatMap((g) => [g.en.key, g.es.key]),
   ...Object.values(BOOKING_RULE_GATES).map((g) => g.key),
-  ...Object.values(OPEN_MATTER_GATES).map((g) => g.key),
+  OPEN_MATTER_GATES.openGates.key,
+  OPEN_MATTER_GATES.retainerAttestation.key,
+  ...[OPEN_MATTER_GATES.portalInvite, OPEN_MATTER_GATES.matterOpened].flatMap((g) => [g.en.key, g.es.key]),
   ...Object.values(SPEED_TO_LEAD_COPY).flatMap((g) => [g.en.key, g.es.key]),
-  ...Object.values(FOLLOW_UP_GATES).map((g) => g.key),
-  ...Object.values(FOLLOW_UP_TEMPLATES).map((g) => g.key),
+  FOLLOW_UP_GATES.outreach.key,
+  FOLLOW_UP_GATES.personalInjury.key,
+  FOLLOW_UP_GATES.stopConfirmation.en.key,
+  FOLLOW_UP_GATES.stopConfirmation.es.key,
+  ...Object.values(FOLLOW_UP_TEMPLATES).flatMap((g) => [g.en.key, g.es.key]),
   ...Object.values(IDENTITY_COPY).map((g) => g.key),
-  ...Object.values(ACCEPTANCE_GATES).map((g) => g.key),
-  ...Object.values(CLIENT_STATUS_GATES).map((g) => g.key),
+  ACCEPTANCE_GATES.autoDecline.key,
+  ACCEPTANCE_GATES.referralList.key,
+  ACCEPTANCE_GATES.declineNotice.en.key,
+  ACCEPTANCE_GATES.declineNotice.es.key,
+  ...Object.values(CLIENT_STATUS_GATES).flatMap((g) => [g.en.key, g.es.key]),
 ];
 
 /** Shared gates this engine relies on (defined in src/compliance/gates.ts). */
