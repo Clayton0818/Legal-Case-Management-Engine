@@ -184,7 +184,7 @@ export async function fetchLeadFunnelRows(tx: TenantTx, tenantId: string, filter
       attribution,
       fitEvaluations: fitBySession.get(s.id) ?? [],
       consultations: consultBySession.get(s.id) ?? [],
-      retainedAt: (s.matterId && retainedAtByMatterId.get(s.matterId)) ?? null,
+      retainedAt: s.matterId ? retainedAtByMatterId.get(s.matterId) ?? null : null,
       followUpStoppedReason: stoppedRuns[0]?.stoppedReason ?? null,
     };
   });

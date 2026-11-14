@@ -202,6 +202,7 @@ export function computeStepConversionRates(counts: Record<FunnelStage, number>):
   for (let i = 0; i < FUNNEL_STAGES.length - 1; i++) {
     const from = FUNNEL_STAGES[i];
     const to = FUNNEL_STAGES[i + 1];
+    if (from === undefined || to === undefined) continue;
     const fromCount = counts[from];
     rates.push({ from, to, rate: fromCount === 0 ? 0 : counts[to] / fromCount });
   }
@@ -231,7 +232,8 @@ export function computeTimeToRetainStats(rows: readonly LeadFunnelRow[]): TimeTo
   const sum = days.reduce((a, b) => a + b, 0);
   const sorted = [...days].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  const medianDays = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const upper = sorted[mid] ?? 0;
+  const medianDays = sorted.length % 2 === 0 ? ((sorted[mid - 1] ?? upper) + upper) / 2 : upper;
   return { count: days.length, averageDays: sum / days.length, medianDays };
 }
 
