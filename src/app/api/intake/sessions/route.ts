@@ -3,7 +3,6 @@ import { desc, eq } from "drizzle-orm";
 import { getDevTenantId } from "@/tenancy/devTenant";
 import { firmConfigVersions, intakeEvents, intakeSessions } from "@/db/schema";
 import { getPrompt } from "@/lib/intakeEntryFlow/engine";
-import type { LeadAttributionInput } from "@/engines/intake/attribution/model";
 
 // withTenant (and, transitively, src/tenancy/db.ts) is imported lazily
 // inside the handler, not statically at module scope. db.ts throws at
@@ -23,47 +22,13 @@ import type { LeadAttributionInput } from "@/engines/intake/attribution/model";
 // intake), not something an API route should paper over silently.
 class FirmNotConfiguredError extends Error {}
 
-// c74: the widget/landing page can pass where this inquiry came from —
-// landingPage/campaignTag/isGoogleAds/directoryName/referralSource/
-// phoneTrackingNumber — as an OPTIONAL JSON body. Reading it is best-effort
-// on purpose: a missing or malformed body must never stop a session from
-// being created (that would turn an analytics nice-to-have into an outage),
-// so any read/parse failure here just means "no attribution captured yet"
-// rather than a 400. Staff can always add or correct it later through
-// PATCH /api/intake/sessions/[id]/attribution.
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-async function readOptionalAttributionInput(req: Request): Promise<LeadAttributionInput | null> {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return null;
-  }
-  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
-  const b = body as Record<string, unknown>;
-  const input: LeadAttributionInput = {
-    landingPage: isNonEmptyString(b.landingPage) ? b.landingPage : null,
-    campaignTag: isNonEmptyString(b.campaignTag) ? b.campaignTag : null,
-    isGoogleAds: b.isGoogleAds === true,
-    directoryName: isNonEmptyString(b.directoryName) ? b.directoryName : null,
-    referralSource: isNonEmptyString(b.referralSource) ? b.referralSource : null,
-    phoneTrackingNumber: isNonEmptyString(b.phoneTrackingNumber) ? b.phoneTrackingNumber : null,
-  };
-  const hasAnySignal = input.isGoogleAds || [input.landingPage, input.campaignTag, input.directoryName, input.referralSource, input.phoneTrackingNumber].some(Boolean);
-  return hasAnySignal ? input : null;
-}
-
 // Creates a new intake session for the (currently single, dev-hardcoded)
 // tenant this deployment serves — see src/tenancy/devTenant.ts's own
 // comment. Real per-firm resolution (which firm's embedded widget the
 // visitor is on) is out of scope for this card.
-export async function POST(req: Request) {
+export async function POST() {
   const tenantId = getDevTenantId();
   const { withTenant } = await import("@/tenancy/withTenant");
-  const attributionInput = await readOptionalAttributionInput(req);
 
   try {
     const session = await withTenant(tenantId, async (tx) => {
@@ -102,11 +67,6 @@ export async function POST(req: Request) {
         payload: { channel: "web_chat" },
         firmConfigVersionId: config.id,
       });
-
-      if (attributionInput) {
-        const { upsertLeadAttribution } = await import("@/engines/intake/attribution/service");
-        await upsertLeadAttribution(tx, tenantId, created.id, attributionInput);
-      }
 
       return created;
     });
