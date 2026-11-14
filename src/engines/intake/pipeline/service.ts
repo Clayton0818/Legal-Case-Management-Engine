@@ -290,12 +290,15 @@ export async function getMatterStageView(tx: TenantTx, tenantId: string, matterI
 
 /**
  * What a CLIENT may see of the stage (c14 rule 8): only the attorney-reviewed
- * generic status for the system stage (a visible placeholder until approved).
- * Never the firm's internal label. Firm-authored client labels are stored on
- * the pipeline but not shown until the founder decides open question 13 and
- * the wording goes through review.
+ * generic status for the system stage (a visible placeholder until approved),
+ * in the language the person is using this inquiry in (c36) — the latest
+ * intake session linked to the matter, defaulting to English when there is
+ * none yet. Never the firm's internal label. Firm-authored client labels are
+ * stored on the pipeline but not shown until the founder decides open
+ * question 13 and the wording goes through review.
  */
 export async function clientStatusForMatter(tx: TenantTx, tenantId: string, matterId: string): Promise<{ status: string }> {
   const matter = await getMatter(tx, tenantId, matterId);
-  return { status: legalCopy(clientStatusGateKey(matter.stage)) };
+  const session = await latestSessionForMatter(tx, tenantId, matterId);
+  return { status: legalCopy(clientStatusGateKey(matter.stage, session?.language)) };
 }

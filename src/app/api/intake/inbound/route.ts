@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       },
       text: optionalStr(body, "text"),
       language: language === "es" ? "es" : language === "en" ? "en" : null,
-      staffUserId: actingUserId(req),
+      staffUserId: await actingUserId(tx, tenantId, req),
     });
   });
 }

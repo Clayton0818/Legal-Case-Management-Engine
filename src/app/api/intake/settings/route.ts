@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   return tenantRoute("PATCH /api/intake/settings", async ({ tx, tenantId }) => {
-    const userId = requireActingUserId(req);
+    const userId = await requireActingUserId(tx, tenantId, req);
     await requireStaff(tx, tenantId, userId, ["firm_admin"], "change intake settings");
     const body = await readJson(req);
     const followUp = body.followUp as Record<string, unknown> | undefined;
@@ -43,6 +43,6 @@ export async function POST(req: Request) {
   return tenantRoute("POST /api/intake/settings", async ({ tx, tenantId }) => {
     const body = await readJson(req);
     if (body.action !== "follow_ups") throw new HttpError(400, "action must be 'follow_ups'.");
-    return setFollowUpsEnabled(tx, { tenantId, byUserId: requireActingUserId(req), enabled: bool(body, "enabled") });
+    return setFollowUpsEnabled(tx, { tenantId, byUserId: await requireActingUserId(tx, tenantId, req), enabled: bool(body, "enabled") });
   });
 }

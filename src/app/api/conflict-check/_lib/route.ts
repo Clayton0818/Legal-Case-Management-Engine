@@ -1,6 +1,6 @@
 // Route wrapper for the Conflict-check API. Builds on the shared
 // tenantRoute() (tenant, lazy withTenant, approvals loaded fail-safe) and adds:
-//  - the acting user and their conflicts access (see resolveActingUserId);
+//  - the signed-in staff member (src/auth/staff.ts) and their conflicts access;
 //  - an optional capability check that LOGS a denial (c56 acceptance 4);
 //  - handled errors (pending approval → 423, access → 403, validation → 4xx)
 //    returned as responses INSIDE the transaction, so the audit row for a
@@ -9,7 +9,8 @@
 import { tenantRoute, type TenantRouteContext } from "@/tenancy/route";
 import { audit, getFirmSettings } from "@/core";
 import { AccessDeniedError, checkAndLog, loadAccess, type ConflictAccess, type ConflictCapability } from "@/engines/conflict-check/access";
-import { mapHandledError, resolveActingUserId, type MappedError } from "@/engines/conflict-check/http";
+import { resolveStaffUserId } from "@/auth/staff";
+import { DEV_USER_HEADER, mapHandledError, type MappedError } from "@/engines/conflict-check/http";
 import { ENGINE, readConflictSettings } from "@/engines/conflict-check/settings";
 
 export interface ConflictRouteContext extends TenantRouteContext {
@@ -25,10 +26,8 @@ export async function conflictRoute<T>(
   handler: (ctx: ConflictRouteContext) => Promise<T>,
   opts: { status?: number; capability?: ConflictCapability } = {}
 ): Promise<Response> {
-  const who = resolveActingUserId(req.headers);
-  if (!who.ok) return Response.json({ error: who.error }, { status: who.status });
-
   const res = await tenantRoute(label, async ({ tx, tenantId }): Promise<Envelope> => {
+    const who = { userId: (await resolveStaffUserId(tx, tenantId, req, { header: DEV_USER_HEADER, required: true }))! };
     const settings = readConflictSettings(await getFirmSettings(tx, tenantId));
     const access = await loadAccess(tx, tenantId, who.userId, { ownerSeesPartyDetails: settings.ownerSeesPartyDetails });
     if (!access.active) {

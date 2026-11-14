@@ -12,7 +12,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return decideBorderline(tx, {
       tenantId,
       evaluationId: uuid(id, "evaluation id"),
-      userId: requireActingUserId(req),
+      userId: await requireActingUserId(tx, tenantId, req),
       decision: oneOf(body.decision, ["accept", "decline", "more_info"] as const, "decision"),
       reason: str(body, "reason"),
     });

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   return tenantRoute("POST /api/intake/lawyers", async ({ tx, tenantId }) => {
     const body = await readJson(req);
-    const byUserId = requireActingUserId(req);
+    const byUserId = await requireActingUserId(tx, tenantId, req);
     const action = oneOf(body.action, ["profile", "block"] as const, "action");
     if (action === "profile") {
       if (typeof body.seniority !== "number") throw new HttpError(400, "'seniority' (1–5) is required.");

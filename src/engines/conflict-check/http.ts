@@ -9,31 +9,16 @@ import type { InquiryPartyInput } from "./sync";
 import { INDEX_ROLES, NAME_TYPES, type IndexRole, type NameType } from "./types";
 import { ConflictError } from "./util";
 
+/**
+ * The conflict engine's old dev header. The acting user now comes from the
+ * shared sign-in (src/auth/staff.ts); this header is honoured in dev mode only.
+ */
 export const DEV_USER_HEADER = "x-user-id";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isUuid(v: unknown): v is string {
   return typeof v === "string" && UUID.test(v);
-}
-
-/**
- * LOCAL ADAPTER until real sign-in (c34) exists: the acting user comes from
- * the `x-user-id` header. Accepted outside production, or when an operator
- * explicitly sets ALLOW_DEV_USER_HEADER=1 for a staging pilot. The user must
- * still exist in the firm with the right role/grant (loadAccess), so an
- * unknown id simply has no access.
- */
-export function resolveActingUserId(
-  headers: Pick<Headers, "get">,
-  env: { NODE_ENV?: string; ALLOW_DEV_USER_HEADER?: string } = process.env
-): { ok: true; userId: string } | { ok: false; status: number; error: string } {
-  const allowed = env.NODE_ENV !== "production" || env.ALLOW_DEV_USER_HEADER === "1";
-  if (!allowed) return { ok: false, status: 401, error: "Sign-in is required." };
-  const raw = headers.get(DEV_USER_HEADER)?.trim();
-  if (!raw) return { ok: false, status: 401, error: `Sign-in is required (${DEV_USER_HEADER} header until c34).` };
-  if (!isUuid(raw)) return { ok: false, status: 400, error: "Invalid user id." };
-  return { ok: true, userId: raw };
 }
 
 export interface MappedError {

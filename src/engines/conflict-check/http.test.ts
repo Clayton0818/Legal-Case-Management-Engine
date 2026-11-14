@@ -1,29 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PendingApprovalError, requireApproval, resetApprovalStateForTests, setBlockedActionSink } from "@/compliance/approvals";
 import { RULE_GATES } from "@/compliance/gates";
 import { conflictRoute } from "@/app/api/conflict-check/_lib/route";
 import { AccessDeniedError } from "./access";
-import { mapHandledError, oneOf, optDate, parseInquiryParties, readBody, reqUuid, resolveActingUserId, uuidList } from "./http";
+import { mapHandledError, oneOf, optDate, parseInquiryParties, readBody, reqUuid, uuidList } from "./http";
 import { LetterNotNeutralError } from "./letters";
 import { ConflictError } from "./util";
 
 const USER = "7d3c5a0e-3f4b-4b8a-9d61-2f0b1c9e8a11";
-const headers = (h: Record<string, string>) => new Headers(h);
 
-afterEach(() => resetApprovalStateForTests());
-
-describe("resolveActingUserId (dev stand-in until c34 sign-in)", () => {
-  it("reads the x-user-id header outside production", () => {
-    expect(resolveActingUserId(headers({ "x-user-id": USER }), { NODE_ENV: "development" })).toEqual({ ok: true, userId: USER });
-  });
-  it("requires the header and a valid id", () => {
-    expect(resolveActingUserId(headers({}), { NODE_ENV: "test" })).toMatchObject({ ok: false, status: 401 });
-    expect(resolveActingUserId(headers({ "x-user-id": "admin" }), { NODE_ENV: "test" })).toMatchObject({ ok: false, status: 400 });
-  });
-  it("refuses the header in production unless an operator opts in", () => {
-    expect(resolveActingUserId(headers({ "x-user-id": USER }), { NODE_ENV: "production" })).toMatchObject({ ok: false, status: 401 });
-    expect(resolveActingUserId(headers({ "x-user-id": USER }), { NODE_ENV: "production", ALLOW_DEV_USER_HEADER: "1" }).ok).toBe(true);
-  });
+afterEach(() => {
+  resetApprovalStateForTests();
+  vi.unstubAllEnvs();
 });
 
 describe("mapHandledError", () => {
@@ -81,7 +69,9 @@ describe("parseInquiryParties", () => {
 });
 
 describe("conflictRoute", () => {
-  it("answers 401 before touching the database when no user is given", async () => {
+  it("answers 401 when nobody is signed in", async () => {
+    // Independent of the job's own DEV_TENANT_ID (the Full pipeline sets one).
+    vi.stubEnv("AUTH_PROVIDER", "none");
     const res = await conflictRoute("TEST", new Request("http://x"), async () => "never");
     expect(res.status).toBe(401);
   });
